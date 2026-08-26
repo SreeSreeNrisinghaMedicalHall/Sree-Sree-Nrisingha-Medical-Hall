@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sree Sree Nrisingha Medical Hall</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background-color: #f0f4f8;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: #ffffff;
+            max-width: 500px;
+            width: 100%;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+            padding: 30px;
+            text-align: center;
+            margin-top: 40px;
+        }
+        h1 {
+            color: #1a365d;
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+        p {
+            color: #4a5568;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 25px;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #3182ce;
+            color: #ffffff;
+            padding: 12px 30px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .btn:hover {
+            background-color: #2b6cb0;
+        }
+        .security-box {
+            display: none;
+            background: #edf2f7;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: left;
+            margin-top: 15px;
+        }
+        .security-box h3 {
+            color: #2d3748;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+        .security-box p {
+            font-size: 14px;
+            margin-bottom: 8px;
+            background: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border-left: 4px solid #3182ce;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Sree Sree Nrisingha Medical Hall</h1>
+        <p>আমাদের ওয়েবসাইটটি তৈরি করা হচ্ছে। খুব শীঘ্রই আমরা লাইভ হব।</p>
+        
+        <button class="btn" onclick="toggleSecurity()">যোগাযোগ করুন</button>
+
+        <div class="security-box" id="securityBox">
+            <h3>নিরাপত্তা প্রশ্ন ও উত্তর:</h3>
+            <p>১. আপনার বড় বোনের নাম কি? <br><strong>উত্তর:</strong> জূথিকা রানী</p>
+            <p>২. your younger sister name? <br><strong>উত্তর:</strong> রিনা রানী</p>
+        </div>
+    </div>
+
+    <script>
+        function toggleSecurity() {
+            var box = document.getElementById("securityBox");
+            if (box.style.display === "block") {
+                box.style.display = "none";
+            } else {
+                box.style.display = "block";
+            }
+        }
+    </script>
+
+</body>
+</html>
