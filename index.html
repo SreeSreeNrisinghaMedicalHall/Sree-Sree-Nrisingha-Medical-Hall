@@ -1,0 +1,122 @@
+<div id="lockScreen" style="position:fixed;inset:0;z-index:200;background:linear-gradient(135deg,#1B4D3E 0%,#123329 100%);display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;">
+  <div style="width:64px;height:64px;border-radius:16px;background:#C9A227;display:flex;align-items:center;justify-content:center;font-size:30px;color:#123329;font-weight:800;margin-bottom:16px;">শ্রী</div>
+  <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:4px;text-align:center;">শ্রী শ্রী নৃসিংহ মেডিকেল হল</div>
+  <div id="lockSubtitle" style="color:rgba(255,255,255,0.75);font-size:13px;margin-bottom:22px;text-align:center;">অ্যাপ খুলতে PIN দিন</div>
+
+  <!-- পিন দেওয়ার বা নতুন পিন কনফার্ম করার অংশ -->
+  <div id="normalPinWrap">
+    <input type="password" inputmode="numeric" id="lockPinInput" maxlength="8" placeholder="PIN" style="width:200px;text-align:center;font-size:22px;letter-spacing:6px;padding:12px;border-radius:12px;border:none;margin-bottom:14px;">
+    <div id="lockConfirmWrap" style="display:none; margin-bottom:14px;">
+      <input type="password" inputmode="numeric" id="lockPinConfirm" maxlength="8" placeholder="আবার PIN দিন" style="width:200px;text-align:center;font-size:22px;letter-spacing:6px;padding:12px;border-radius:12px;border:none;">
+    </div>
+    <button id="lockSubmitBtn" onclick="submitLockPin()" style="width:200px;padding:12px;border-radius:12px;border:none;background:#C9A227;color:#123329;font-weight:800;font-size:15px;">খুলুন</button>
+  </div>
+
+  <!-- ওটিপির পরিবর্তে নতুন সিকিউরিটি প্রশ্ন অংশ -->
+  <div id="forgotFlowWrap" style="display:none;width:220px;">
+    <div style="color:rgba(255,255,255,0.85);font-size:13px;margin-bottom:12px;text-align:center;">নিচের প্রশ্নগুলোর সঠিক উত্তর দিন</div>
+    
+    <div style="margin-bottom:10px;">
+      <label style="color:#fff;font-size:12px;display:block;margin-bottom:4px;">১. আপনার মৃত বড় বোনের নাম কি?</label>
+      <input type="text" id="ansOlderSister" placeholder="উত্তর লিখুন" style="width:100%;padding:10px;border-radius:8px;border:none;box-sizing:border-box;font-size:14px;">
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="color:#fff;font-size:12px;display:block;margin-bottom:4px;">২. আপনার ছোট বোনের নাম কি?</label>
+      <input type="text" id="ansYoungerSister" placeholder="উত্তর লিখুন" style="width:100%;padding:10px;border-radius:8px;border:none;box-sizing:border-box;font-size:14px;">
+    </div>
+
+    <button onclick="verifySecurityQuestions()" style="width:100%;padding:12px;border-radius:12px;border:none;background:#C9A227;color:#123329;font-weight:800;font-size:14px;">যাচাই করুন</button>
+    <button onclick="cancelForgotFlow()" style="margin-top:14px;background:none;border:none;color:rgba(255,255,255,0.6);font-size:12px;text-decoration:underline;width:100%;">বাতিল করুন</button>
+  </div>
+
+  <div id="lockError" style="color:#ffb3b3;font-size:12.5px;margin-top:10px;min-height:16px;text-align:center;width:200px;"></div>
+  <button id="forgotPinLink" onclick="openForgotFlow()" style="margin-top:8px;background:none;border:none;color:rgba(255,255,255,0.6);font-size:12px;text-decoration:underline;">PIN ভুলে গেছেন?</button>
+</div>
+
+<script>
+// ১. গ্লোবাল ভেরিয়েবল এবং সঠিক উত্তর ডিফাইন
+var isResetMode = false;
+var correctOlderSister = "যুথিকা রানী";
+var correctYoungerSister = "রিনা রানী";
+
+// ২. পিন ভুলে গেলে প্রশ্নের ফরম খোলার ফাংশন
+function openForgotFlow() {
+  document.getElementById('normalPinWrap').style.display = 'none';
+  document.getElementById('forgotPinLink').style.display = 'none';
+  document.getElementById('forgotFlowWrap').style.display = 'block';
+  document.getElementById('lockError').innerText = '';
+}
+
+// ৩. সিকিউরিটি প্রশ্নের উত্তর যাচাই করার ফাংশন
+function verifySecurityQuestions() {
+  var ans1 = document.getElementById('ansOlderSister').value.trim();
+  var ans2 = document.getElementById('ansYoungerSister').value.trim();
+  var errDiv = document.getElementById('lockError');
+
+  if(ans1 === correctOlderSister && ans2 === correctYoungerSister) {
+    // উত্তর সঠিক হলে পিন রিসেট মোড চালু হবে
+    isResetMode = true;
+    document.getElementById('forgotFlowWrap').style.display = 'none';
+    document.getElementById('normalPinWrap').style.display = 'block';
+    document.getElementById('lockConfirmWrap').style.display = 'block';
+    document.getElementById('lockSubtitle').innerText = "নতুন PIN সেট করুন";
+    document.getElementById('lockSubmitBtn').innerText = "PIN পরিবর্তন করুন";
+    document.getElementById('lockPinInput').value = '';
+    errDiv.style.color = "#4fffa7";
+    errDiv.innerText = "উত্তর সঠিক হয়েছে! নতুন পিন দিন।";
+  } else {
+    errDiv.style.color = "#ffb3b3";
+    errDiv.innerText = "দুঃখিত, উত্তর সঠিক হয়নি।";
+  }
+}
+
+// ৪. পিন সাবমিট বা নতুন পিন সেভ করার ফাংশন
+function submitLockPin() {
+  var pin = document.getElementById('lockPinInput').value;
+  var errDiv = document.getElementById('lockError');
+
+  if(isResetMode) {
+    var confirmPin = document.getElementById('lockPinConfirm').value;
+    if(pin.length < 4) {
+      errDiv.innerText = "PIN কমপক্ষে ৪ সংখ্যার হতে হবে।";
+      return;
+    }
+    if(pin !== confirmPin) {
+      errDiv.innerText = "উভয় PIN মিলছে না।";
+      return;
+    }
+    // লোকাল স্টোরেজে নতুন পিন সেভ করা
+    localStorage.setItem('appUserPin', pin);
+    errDiv.style.color = "#4fffa7";
+    errDiv.innerText = "PIN সফলভাবে পরিবর্তন হয়েছে!";
+    
+    // অ্যাপ খোলার জন্য স্ক্রিন রিলোড বা আনলক করা
+    setTimeout(function() {
+      location.reload(); 
+    }, 1500);
+  } else {
+    // সাধারণ লগইন মোড: পিন যাচাই করা
+    var savedPin = localStorage.getItem('appUserPin') || "1234"; // ডিফল্ট পিন ১২৩৪
+    if(pin === savedPin) {
+      document.getElementById('lockScreen').style.display = 'none';
+      alert("অ্যাপে সফলভাবে প্রবেশ করেছেন!");
+    } else {
+      errDiv.style.color = "#ffb3b3";
+      errDiv.innerText = "ভুল PIN, আবার চেষ্টা করুন।";
+    }
+  }
+}
+
+// ৫. রিসেট প্রসেস বাতিল করার ফাংশন
+function cancelForgotFlow() {
+  isResetMode = false;
+  document.getElementById('forgotFlowWrap').style.display = 'none';
+  document.getElementById('normalPinWrap').style.display = 'block';
+  document.getElementById('lockConfirmWrap').style.display = 'none';
+  document.getElementById('forgotPinLink').style.display = 'inline-block';
+  document.getElementById('lockSubtitle').innerText = "অ্যাপ খুলতে PIN দিন";
+  document.getElementById('lockSubmitBtn').innerText = "খুলুন";
+  document.getElementById('lockError').innerText = '';
+}
+</script>
