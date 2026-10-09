@@ -177,7 +177,10 @@ async function initCloud(){
   // "fixed" record right back to missing/৳০. Reusing the cached cloudDb regardless of online
   // status lets Firestore's own offline write queue do its job.
   if(cloudDb) return cloudDb;
-  if(!navigator.onLine) return null;
+  // আগে এখানে অফলাইনে সরাসরি null ফেরত যেত — তাই অ্যাপ ইন্টারনেট ছাড়া শুরু হলে ক্লাউড-সংযোগই তৈরি হতো না,
+  // আর সেই সময়ের বিক্রয়/জমা শুধু ওই ফোনেই থেকে যেত (কখনো ক্লাউডে যেত না)। এখন Firebase-এর স্ক্রিপ্ট ফোনে জমা থাকলে
+  // অফলাইনেও সংযোগ তৈরি হয় — Firestore নিজে লেখাগুলো লাইনে রাখে ও ইন্টারনেট ফিরলে পাঠিয়ে দেয়।
+  // স্ক্রিপ্ট জমা না থাকলে আগের মতোই চুপচাপ null ফেরত যায়।
   try{
     if(!window.firebase){
       await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
@@ -192,7 +195,7 @@ async function initCloud(){
     // session either way, just won't survive a full app close until persistence succeeds later.
     try{ await cloudDb.enablePersistence({synchronizeTabs:true}); }catch(e){ console.warn('অফলাইন পার্সিস্টেন্স চালু করা যায়নি', e); }
     return cloudDb;
-  }catch(e){ console.error(e); const msg='সংযোগ ব্যর্থ: '+(e&&e.message?e.message:'স্ক্রিপ্ট লোড হয়নি (ইন্টারনেট চেক করুন)'); localStorage.setItem('ssn_last_sync_error', msg); toast('ক্লাউড সংযোগে সমস্যা — ইন্টারনেট/কনফিগ চেক করুন'); updateCloudStatus(); return null; }
+  }catch(e){ if(!navigator.onLine){ console.warn('অফলাইনে ক্লাউড শুরু করা যায়নি (স্ক্রিপ্ট জমা নেই)'); return null; } console.error(e); const msg='সংযোগ ব্যর্থ: '+(e&&e.message?e.message:'স্ক্রিপ্ট লোড হয়নি (ইন্টারনেট চেক করুন)'); localStorage.setItem('ssn_last_sync_error', msg); toast('ক্লাউড সংযোগে সমস্যা — ইন্টারনেট/কনফিগ চেক করুন'); updateCloudStatus(); return null; }
 }
 function shopColl(name){
   const shopCode = localStorage.getItem('ssn_shop_code');
@@ -274,6 +277,68 @@ async function migrateLegacyIfNeeded(db, shopCode){
       await batch.commit();
     }
   }catch(e){ console.error('migration error', e); }
+}
+
+// ===== এই ফোনে আছে কিন্তু ক্লাউডে নেই — দেখে বেছে ক্লাউডে পাঠানো =====
+// অফলাইনে করা বিক্রয়/জমা/ক্রয় যদি কোনো কারণে ক্লাউডে না পৌঁছে থাকে (যেমন ইন্টারনেট ছাড়া অ্যাপ খুলে কাজ করলে),
+// এখানে শেষ ১৪ দিনের এমন রেকর্ড দেখায়। আপনি দেখে টিক দিয়ে বেছে পাঠাবেন — নিজে থেকে কিছু পাঠায় না
+// (কারণ অন্য ফোনে মোছা কোনো রেকর্ড ভুলে ফিরে আসতে পারে)।
+async function openPendingUploads(){
+  try{
+    if(!localStorage.getItem('ssn_shop_code')){ toast('আগে ক্লাউড সংযোগ করুন'); return; }
+    if(!navigator.onLine){ toast('ইন্টারনেট চালু করে আবার চাপুন'); return; }
+    if(!cloudReady()) await attachRealtimeListeners();
+    if(!cloudReady()){ toast('ক্লাউডের সাথে সংযোগ হয়নি'); return; }
+    toast('ক্লাউডের সাথে মিলিয়ে দেখা হচ্ছে…');
+    const cutoff = Date.now() - 14*86400000;
+    const tomb = new Set(getTombstones().map(t=>t.id));
+    const kinds = [ {name:'sales', arr:sales}, {name:'payments', arr:payments}, {name:'purchases', arr:purchases} ];
+    const found = [];
+    for(const k of kinds){
+      const local = k.arr.filter(r=>r && r.id && (r.ts||0) > cutoff && !tomb.has(r.id));
+      if(!local.length) continue;
+      const snap = await shopColl(k.name).where('ts','>',cutoff).get({source:'server'});
+      const ids = new Set(snap.docs.map(d=>d.id));
+      local.forEach(r=>{ if(!ids.has(r.id)) found.push({k, r}); });
+    }
+    found.sort((x,y)=>(y.r.ts||0)-(x.r.ts||0));
+    const custName = id=>{ const c = customers.find(x=>x.id===id); return c ? c.name : ''; };
+    const describe = ({k,r})=>{
+      const when = r.date || '';
+      if(k.name==='sales') return {t:'বিক্রয়: '+escapeHtml(r.customerName||'ওয়াক-ইন')+(r.patientName?' • রোগী: '+escapeHtml(r.patientName):''), s:when+' • '+(r.items||[]).length+' আইটেম', a:r.total};
+      if(k.name==='purchases') return {t:'ক্রয়: '+escapeHtml(r.medicineName||''), s:when+' • '+r.qty+' × '+fmt(r.price), a:(r.qty||0)*(r.price||0)};
+      const typ = r.type==='expense' ? 'খরচ: '+escapeHtml(r.note||'') : r.type==='due_adjustment' ? 'বাকি যোগ: '+escapeHtml(custName(r.customerId)) : r.type==='supplier_payment' ? 'সাপ্লায়ার পরিশোধ' : r.type==='referrer_commission' ? 'কমিশন পরিশোধ' : 'জমা: '+escapeHtml(custName(r.customerId));
+      return {t:typ, s:when, a:r.amount};
+    };
+    const ov = _supOverlay(`
+      <div style="font-weight:800;font-size:17px;">☁️ ক্লাউডে নেই এমন রেকর্ড</div>
+      <div class="row-sub" style="margin:4px 0 8px;">শেষ ১৪ দিনের যে রেকর্ডগুলো এই ফোনে আছে কিন্তু ক্লাউডে পাওয়া যায়নি। যেগুলো পাঠাতে চান টিক দিন (বিক্রয় পাঠালে ক্লাউডের স্টকও কমবে)।</div>
+      ${found.length ? found.map((f,i)=>{ const d = describe(f); return `<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed #ddd;"><input type="checkbox" data-i="${i}" checked style="width:20px;height:20px;flex:none;"><div style="min-width:0;flex:1;overflow-wrap:anywhere;"><div style="font-weight:600;">${d.t}</div><div class="row-sub">${d.s}</div></div><b style="white-space:nowrap;">${fmt(d.a||0)}</b></label>`; }).join('') : '<div class="empty-state">✅ সব রেকর্ড ক্লাউডে আছে — কিছু পাঠানোর নেই</div>'}
+      ${found.length ? '<button id="pendSend" class="btn btn-primary btn-block" style="margin-top:12px;">টিক দেওয়াগুলো ক্লাউডে পাঠান</button>' : ''}
+      <button id="pendClose" class="btn btn-block" style="margin-top:8px;background:#f1f1f1;">বন্ধ করুন</button>`);
+    ov.querySelector('#pendClose').onclick = ()=>ov.remove();
+    const sendBtn = ov.querySelector('#pendSend');
+    if(sendBtn) sendBtn.onclick = async ()=>{
+      sendBtn.disabled = true; sendBtn.textContent = 'পাঠানো হচ্ছে…';
+      const chosen = [...ov.querySelectorAll('input[type=checkbox][data-i]:checked')].map(c=>found[+c.dataset.i]);
+      let ok = 0, fail = 0;
+      for(const {k,r} of chosen){
+        try{
+          if(r.customerId){   // রেকর্ডে যে কাস্টমারের কথা আছে সে ক্লাউডে না থাকলে আগে তাকেও পাঠাই
+            const cd = await shopColl('customers').doc(r.customerId).get();
+            if(!cd.exists){ const loc = customers.find(c=>c.id===r.customerId); if(loc) await shopColl('customers').doc(loc.id).set(Object.assign({}, loc)); }
+          }
+          await shopColl(k.name).doc(r.id).set(Object.assign({}, r));
+          const inc = (id, n)=>shopColl('medicines').doc(id).update({stock: firebase.firestore.FieldValue.increment(n)}).catch(e=>console.warn('stock update skipped', id, e));
+          if(k.name==='sales'){ for(const it of (r.items||[])) if(it.id) await inc(it.id, -(it.qty||0)); }
+          if(k.name==='purchases' && r.medicineId) await inc(r.medicineId, (r.qty||0));
+          ok++;
+        }catch(e){ console.error(e); fail++; }
+      }
+      ov.remove();
+      toast(ok+'টা ক্লাউডে পাঠানো হয়েছে ✓'+(fail?(' • '+fail+'টা ব্যর্থ — আবার চেষ্টা করুন'):''));
+    };
+  }catch(e){ console.error(e); toast('মেলানো যায়নি: '+(e&&e.message?e.message:e)); }
 }
 async function attachRealtimeListeners(){
   const db = await initCloud();

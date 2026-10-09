@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nrisingha-medical-v5';
+const CACHE_NAME = 'nrisingha-medical-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -16,7 +16,9 @@ const ASSETS = [
   './app-11-lock-init.js',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js'
 ];
 
 self.addEventListener('install', (e) => {

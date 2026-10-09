@@ -121,6 +121,8 @@ function requireOwnerRole(actionLabel){
 }
 function applyRoleGating(){
   const isOwner = currentRole()==='owner';
+  // স্টাফ ফোনে "ব্যাকআপ পাঠান" বারটা দেখাবে না (PIN দেওয়ার আগে role ডিফল্ট 'owner' থাকায় বারটা আগে তৈরি হয়ে যেত)
+  if(!isOwner){ const _bar = document.getElementById('backupRemindBar'); if(_bar) _bar.remove(); }
   const secCard = document.getElementById('pinSetupBtn');
   const staffCard = document.getElementById('staffPinBtn');
   const deviceCard = document.getElementById('deviceManageCard');
@@ -510,8 +512,8 @@ updateCloudStatus();
 updateStorageUsageDisplay();
 updateLockUI();
 initLockGate();
-if(navigator.onLine && localStorage.getItem('ssn_cloud_config') && localStorage.getItem('ssn_shop_code')){
-  attachRealtimeListeners();
+if(localStorage.getItem('ssn_cloud_config') && localStorage.getItem('ssn_shop_code')){
+  attachRealtimeListeners();   // অফলাইনেও চেষ্টা করে — স্ক্রিপ্ট জমা থাকলে লেখাগুলো লাইনে থেকে ইন্টারনেট ফিরলে যাবে
 }
 window.addEventListener('offline', ()=>{ cloudLive = false; updateCloudStatus(); });
 window.addEventListener('online', ()=>{
