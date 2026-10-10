@@ -245,6 +245,10 @@ function updateStorageUsageDisplay(){
   // during the cloud-sync burst on app open meant repeating a full-storage scan up to 10 times
   // for a number nobody was looking at yet.
   if(!el || el.offsetParent===null) return;
+  // পারফরম্যান্স: ডেটা বড় হলে এই স্ক্যানে অর্ধ সেকেন্ড লাগে — সাত সেকেন্ডের মধ্যে আবার হলে নতুন করে মাপা হয় না
+  const _now = Date.now();
+  if(window._lastUsageScan && _now - window._lastUsageScan < 7000) return;
+  window._lastUsageScan = _now;
   const bytes = estimateStorageUsageBytes();
   const mb = (bytes/1024/1024).toFixed(2);
   el.textContent = `এই ফোনে এখন প্রায় ${mb} MB তথ্য জমা আছে (সাধারণত ফোনভেদে সর্বোচ্চ ৫-১০ MB পর্যন্ত জায়গা থাকে — এর কাছাকাছি চলে গেলে নতুন এন্ট্রি সংরক্ষণ ব্যর্থ হতে পারে, তখন একটা সতর্কবার্তা দেখানো হবে)।`;
@@ -335,7 +339,11 @@ function maybeTakeSafetySnapshot(){
   if(!window.indexedDB){ maybeTakeSafetySnapshotLegacy(); return; }
   const lastTs = parseInt(localStorage.getItem('ssn_snapshot_last')||'0', 10);
   if(Date.now() - lastTs < SNAPSHOT_MIN_INTERVAL_MS) return;
-  takeSnapshotNow('').catch(()=>{});
+  // পারফরম্যান্স: স্ন্যাপশটে সব ডেটা একসাথে সিরিয়ালাইজ হয় (ডেটা বাড়লে অর্ধ সেকেন্ডের বেশি), তাই বিক্রি সংরক্ষণের সাথে সাথে না করে
+  // কয়েক সেকেন্ড পরে (পর্দা ফাঁকা হলে) করা হয়। দুইবার ডাকলেও একবারই চলবে।
+  if(window._snapScheduled) return;
+  window._snapScheduled = true;
+  setTimeout(()=>{ window._snapScheduled = false; takeSnapshotNow('').catch(()=>{}); }, 4000);
 }
 function listSnapshots(){
   try{ return JSON.parse(localStorage.getItem('ssn_snapshot_index')||'[]').sort((a,b)=>b.ts-a.ts); }catch(e){ return []; }

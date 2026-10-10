@@ -764,8 +764,19 @@ function renderPrescriptionList(){
 
 // Total money a customer has EVER bought medicine for — separate from c.due (which only
 // tracks what they still OWE). This is what answers "মোট কত টাকার ঔষধ কিনলো" at a glance.
+// পারফরম্যান্স: আগে প্রতিটা কাস্টমারের জন্য পুরো বিক্রির তালিকা বারবার ঘুরত (তালিকা সাজানোর সময়ও প্রতি তুলনায়), তাই বিক্রি বাড়লে স্লো হতো।
+// এখন একবারে সব বিক্রি গুনে ম্যাপে রাখা হয়; ডেটা বদলালে (save() হলে) আবার হিসাব হয়।
+let _ctpCache = null, _ctpVer = -1, _ctpSales = null, _ctpLen = -1;
+function _custTotalsMap(){
+  if(_ctpCache && _ctpVer === _dataVersion && _ctpSales === sales && _ctpLen === sales.length) return _ctpCache;
+  const m = new Map();
+  for(let i=0;i<sales.length;i++){ const s = sales[i]; if(s && s.customerId) m.set(s.customerId, (m.get(s.customerId)||0) + (s.total||0)); }
+  _ctpCache = m; _ctpVer = _dataVersion; _ctpSales = sales; _ctpLen = sales.length;
+  return m;
+}
 function customerTotalPurchased(custId){
-  return sales.filter(s=>s.customerId===custId).reduce((sum,s)=>sum+(s.total||0),0);
+  if(!custId) return sales.filter(s=>s.customerId===custId).reduce((sum,s)=>sum+(s.total||0),0);
+  return _custTotalsMap().get(custId) || 0;
 }
 // Lifetime approximate profit earned from this one customer — same (price - current med.buy)
 // approach used everywhere else in the app for profit (আজকের/রিপোর্টের আনুমানিক লাভ), so it's

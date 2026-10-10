@@ -460,8 +460,10 @@ function _savePurchaseCore(newSell){
   const credit = !!document.getElementById('pCredit').checked && !!supId;
 
   let newPurchaseId = null;
+  let _editOldQty = 0, _editOldMedId = null;   // ক্লাউডে পার্থক্য পাঠাতে পুরোনো মান লাগবে
   if(editingPurchaseId){
     const old = purchases.find(x=>x.id===editingPurchaseId);
+    _editOldQty = old.qty; _editOldMedId = old.medicineId;
     const oldMed = medicines.find(m=>m.id===old.medicineId);
     if(oldMed) oldMed.stock -= old.qty;
     med.stock += qty; med.buy = price; med.batch = batch; med.expiry = expiry;
@@ -477,10 +479,17 @@ function _savePurchaseCore(newSell){
 
   if(cloudReady()){
     if(editingPurchaseId){
-      shopColl('medicines').doc(med.id).set({stock: med.stock, buy: price, batch, expiry}, {merge:true}).catch(e=>console.error(e));
+      // স্টকের চূড়ান্ত সংখ্যা নয়, পার্থক্য (increment) পাঠাই — অন্য ফোনের অফলাইন বিক্রি যেন মুছে না যায়
+      const _FV = firebase.firestore.FieldValue, _meta = {buy: price, batch, expiry};
+      if(_editOldMedId === med.id){
+        shopColl('medicines').doc(med.id).set(Object.assign({stock: _FV.increment(qty - _editOldQty)}, _meta), {merge:true}).catch(e=>console.error(e));
+      } else {
+        if(_editOldMedId) shopColl('medicines').doc(_editOldMedId).set({stock: _FV.increment(-_editOldQty)}, {merge:true}).catch(e=>console.error(e));
+        shopColl('medicines').doc(med.id).set(Object.assign({stock: _FV.increment(qty)}, _meta), {merge:true}).catch(e=>console.error(e));
+      }
       shopColl('purchases').doc(editingPurchaseId).update({ medicineId:med.id, medicineName:med.name, qty, price, batch, expiry, supplierId:supId||null, supplierName:sup?sup.name:(med.company||null), credit }).catch(e=>console.error(e));
     } else {
-      shopColl('medicines').doc(med.id).set({stock: med.stock, buy: price, batch, expiry}, {merge:true}).catch(e=>console.error(e));
+      shopColl('medicines').doc(med.id).set({stock: firebase.firestore.FieldValue.increment(qty), buy: price, batch, expiry}, {merge:true}).catch(e=>console.error(e));
       const p = purchases.find(x=>x.id===newPurchaseId);
       shopColl('purchases').doc(newPurchaseId).set(p).catch(e=>console.error(e));
     }
@@ -498,7 +507,7 @@ function deletePurchase(){
   save(DB_KEYS.purchase, purchases);
   closeModal('purchaseModalBackdrop'); toast('ক্রয় এন্ট্রি মুছে ফেলা হয়েছে'); renderPurchases(); renderDashboard();
   if(cloudReady()){
-    if(med) shopColl('medicines').doc(med.id).set({stock: med.stock}, {merge:true}).catch(e=>console.error(e));
+    if(med) shopColl('medicines').doc(med.id).set({stock: firebase.firestore.FieldValue.increment(-p.qty)}, {merge:true}).catch(e=>console.error(e));
     shopColl('purchases').doc(editingPurchaseId).delete().catch(e=>console.error(e));
   }
 }
