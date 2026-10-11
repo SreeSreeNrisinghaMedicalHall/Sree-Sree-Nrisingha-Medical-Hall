@@ -172,8 +172,15 @@
         <input type="text" id="patientName" placeholder="খালি রাখলে প্রিন্টে কাস্টমারের নামই যাবে" onblur="syncPatientToSaleCustomer()">
         <label id="patientMobileLabel">রোগীর মোবাইল নম্বর (ঐচ্ছিক)</label>
         <input type="text" id="patientMobile" placeholder="যেমন: 01xxxxxxxxx" onblur="syncPatientToSaleCustomer()">
+<label id="patientAgeLabel">রোগীর বয়স (ঐচ্ছিক)</label>
+<input type="text" id="patientAge" inputmode="numeric" maxlength="12" placeholder="যেমন: ৩৫ অথবা ৮ মাস">
         <div class="row-sub" style="margin-top:2px;">একই কাস্টমারের ঘরে একাধিক রোগী থাকলে (যেমন বাবার নামে কাস্টমার, কিন্তু ওষুধ ছেলে/মেয়ের জন্য) — এখানে আসল রোগীর নাম দিন, স্লিপে সেটাই ছাপা হবে। বাকি ও হিস্টোরি তবুও ওপরের কাস্টমারের নামেই জমা থাকবে।</div>
-        <div id="antibioticInfoWrap" style="display:none;margin-top:10px;padding:10px;border-radius:10px;background:var(--red-soft);border:1px solid var(--red);">
+        <div id="rxPhotoWrap" style="margin-top:10px;">
+<input type="file" id="rxPhotoInput" accept="image/*" style="display:none;" onchange="pickSaleRxPhoto(event)">
+<button type="button" class="btn btn-outline btn-block" id="rxPhotoBtn" onclick="document.getElementById('rxPhotoInput').click()">📷 প্রেসক্রিপশনের ছবি (ঐচ্ছিক)</button>
+<div id="rxPhotoPreview" style="display:none;align-items:center;gap:10px;margin-top:8px;"><img id="rxPhotoImg" alt="" style="max-height:90px;max-width:40%;border-radius:8px;border:1px solid #ccd;"><div style="flex:1;"><div class="row-sub">✓ ছবি নেওয়া হয়েছে — বিক্রি সম্পন্ন করলে এই ফোনে সংরক্ষণ হবে</div><button type="button" class="btn btn-sm btn-outline" style="margin-top:6px;" onclick="clearSaleRxPhoto()">✕ ছবি বাদ দিন</button></div></div>
+</div>
+<div id="antibioticInfoWrap" style="display:none;margin-top:10px;padding:10px;border-radius:10px;background:var(--red-soft);border:1px solid var(--red);">
           <div class="row-sub" style="color:var(--red);font-weight:700;">⚠ কার্টে এন্টিবায়োটিক আছে — নিয়ম অনুযায়ী রেজিস্টারের জন্য প্রেসক্রাইবারের নাম, ওপরের রোগীর নাম ও মোবাইল নম্বর আবশ্যক</div>
         </div>
       </div>

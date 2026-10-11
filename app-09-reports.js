@@ -178,8 +178,9 @@ function rowToHtml(r){
     <div class="row-item" onclick="closeModal('detailModalBackdrop');showReceiptById('${r.sale.id}')" style="cursor:pointer;">
       <div>
         <div class="row-title">${r.item.name} <span class="tag-en">× ${r.item.qty}</span></div>
-        <div class="row-sub">রোগী: ${r.sale.patientName||r.sale.customerName||'—'} • মোবাইল: ${r.sale.patientMobile||'—'}</div>
+        <div class="row-sub">রোগী: ${r.sale.patientName||r.sale.customerName||'—'} • মোবাইল: ${r.sale.patientMobile||'—'}${r.sale.patientAge?' • বয়স: '+r.sale.patientAge:''}</div>
         <div class="row-sub">${r.sale.doctorName ? formatPrescriberLine(r.sale) : 'প্রেসক্রাইবার: —'}</div>
+        ${r.sale.rxPhoto?'<div class="row-sub">📷 প্রেসক্রিপশনের ছবি আছে (রসিদ খুলে দেখুন)</div>':''}
       </div>
       <div class="row-right"><div class="row-sub">${r.sale.date}</div></div>
     </div>`;
@@ -209,7 +210,7 @@ function buildAntibioticRegisterHtml(q, dFrom, dTo){
   const now = new Date();
   const stamp = localDateStr(now)+' '+now.toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'});
   const range = (dFrom||dTo) ? ((dFrom||'শুরু')+' থেকে '+(dTo||'আজ')) : 'সব তারিখ';
-  const body = rows.map((r,i)=>`<tr><td class="n">${i+1}</td><td class="d">${escapeHtml(r.sale.date||'')}</td><td><b>${escapeHtml(r.item.name||'')}</b> <span class="q">× ${escapeHtml(String(r.item.qty))}</span></td><td>${escapeHtml(r.sale.patientName||r.sale.customerName||'—')}<div class="m">${escapeHtml(r.sale.patientMobile||'—')}</div></td><td>${escapeHtml(r.sale.doctorName ? formatPrescriberLine(r.sale) : '—')}</td></tr>`).join('');
+  const body = rows.map((r,i)=>`<tr><td class="n">${i+1}</td><td class="d">${escapeHtml(r.sale.date||'')}</td><td><b>${escapeHtml(r.item.name||'')}</b> <span class="q">× ${escapeHtml(String(r.item.qty))}</span></td><td>${escapeHtml(r.sale.patientName||r.sale.customerName||'—')}<div class="m">${escapeHtml(r.sale.patientMobile||'—')}${r.sale.patientAge?' • বয়স '+escapeHtml(String(r.sale.patientAge)):''}</div></td><td>${escapeHtml(r.sale.doctorName ? formatPrescriberLine(r.sale) : '—')}</td><td>${r.sale.rxPhoto?'ছবি আছে':'—'}</td></tr>`).join('');
   return `<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>এন্টিবায়োটিক রেজিস্টার — ${escapeHtml(localDateStr(now))}</title>
 <style>@page{size:A4;margin:12mm}
 body{font-family:system-ui,-apple-system,"Noto Sans Bengali","Segoe UI",sans-serif;margin:0;padding:14px;background:#f5f5f0;color:#1a2b22}
@@ -225,7 +226,7 @@ button.pr{padding:9px 14px;border:0;border-radius:8px;background:#c9a227;font-we
 <h1>${escapeHtml(shop)} — এন্টিবায়োটিক বিক্রয় রেজিস্টার</h1>
 <div class="sub">সময়কাল: ${escapeHtml(range)}${q?' • ওষুধ: '+escapeHtml(q):''} • মোট ${rows.length}টা এন্ট্রি • তৈরি: ${escapeHtml(stamp)}<br>এই ফাইল অ্যাপ ছাড়াই খোলা ও ছাপা যায়।</div>
 <input class="s" id="q" placeholder="ওষুধ, রোগী, মোবাইল বা প্রেসক্রাইবার দিয়ে খুঁজুন…" oninput="f()">
-<table><thead><tr><th>#</th><th>তারিখ</th><th>এন্টিবায়োটিক × পরিমাণ</th><th>রোগী / মোবাইল</th><th>প্রেসক্রাইবার</th></tr></thead><tbody id="tb">${body || '<tr><td colspan="5">এই শর্তে কোনো এন্টিবায়োটিক বিক্রির রেকর্ড নেই</td></tr>'}</tbody></table>
+<table><thead><tr><th>#</th><th>তারিখ</th><th>এন্টিবায়োটিক × পরিমাণ</th><th>রোগী / মোবাইল</th><th>প্রেসক্রাইবার</th><th>প্রেসক্রিপশন ছবি</th></tr></thead><tbody id="tb">${body || '<tr><td colspan="6">এই শর্তে কোনো এন্টিবায়োটিক বিক্রির রেকর্ড নেই</td></tr>'}</tbody></table>
 <h1 style="margin-top:22px;">এন্টিবায়োটিক ক্রয় রেজিস্টার <span class="q">(${purRows.length}টা এন্ট্রি)</span></h1>
 <table><thead><tr><th>#</th><th>তারিখ</th><th>এন্টিবায়োটিক × পরিমাণ</th><th>সরবরাহকারী</th><th>ব্যাচ</th><th>মেয়াদ</th></tr></thead><tbody id="tb2">${purBody || '<tr><td colspan="6">এই শর্তে কোনো এন্টিবায়োটিক ক্রয়ের রেকর্ড নেই</td></tr>'}</tbody></table>
 <p><button class="pr" onclick="window.print()">🖨 প্রিন্ট করুন</button></p>

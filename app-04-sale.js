@@ -176,6 +176,7 @@ function renderCart(){
   const pMobileLbl = document.getElementById('patientMobileLabel');
   if(pNameLbl) pNameLbl.textContent = hasAbx ? 'রোগীর নাম *' : 'রোগীর নাম (ঐচ্ছিক)';
   if(pMobileLbl) pMobileLbl.textContent = hasAbx ? 'রোগীর মোবাইল নম্বর *' : 'রোগীর মোবাইল নম্বর (ঐচ্ছিক)';
+  { const pb = document.getElementById('rxPhotoBtn'); if(pb) pb.textContent = hasAbx ? '📷 প্রেসক্রিপশনের ছবি তুলে রাখুন (এন্টিবায়োটিক আছে)' : '📷 প্রেসক্রিপশনের ছবি (ঐচ্ছিক)'; }
 }
 let _saleCustSel = '';   // বিক্রয়ে বাছা কাস্টমারের আইডি — তালিকা নতুন করে আঁকা হলেও হারায় না
 function renderSaleCustomerSelect(){
@@ -421,6 +422,7 @@ function completeSaleInner(){
     payMethod, cashPaidNow, dueAdded, doctorName, doctorTitle, doctorType, diagnosis:diagnosis||null, customerId:custId||null, customerName:cust?cust.name:null,
     patientName:patientName||null, patientMobile:patientMobile||null, rxId:_pendingSaleRxId||null };
   Object.assign(saleRecord, sellerFields());   // এই ফোনের বিক্রেতার নাম (থাকলে) — কে বিক্রি করেছে
+  { const _age = (document.getElementById('patientAge')?.value||'').trim(); if(_age) saleRecord.patientAge = _age; }   // রোগীর বয়স (ঐচ্ছিক)
   if(cashPaidNow>0 && payChannel!=='cash') saleRecord.payChannel = payChannel;   // বিকাশ/নগদ/রকেট/কার্ড — ক্যাশ বাক্সের হিসাবে ধরা হয় না
 
   // A completed sale naming this prescriber is a strong signal they're in active use again —
@@ -440,6 +442,7 @@ function completeSaleInner(){
   cart.forEach(c=>{ const med = medicines.find(m=>m.id===c.id); if(med) med.stock -= c.qty; });
   save(DB_KEYS.med, medicines);
   sales.push(saleRecord); _lastSaleId = saleRecord.id;
+  { const _ph = _pendingRxPhoto; _pendingRxPhoto = null; if(_ph) _attachRxPhotoAfterSale(saleRecord.id, _ph); }
   save(DB_KEYS.sale, sales);
   if(dueAdded>0 && cust){ cust.due = (cust.due||0) + dueAdded; }
   if(custWasProvisional || (dueAdded>0 && cust)) save(DB_KEYS.customer, customers);
@@ -462,6 +465,7 @@ function completeSaleInner(){
   document.getElementById('saleDoctorType').value=''; _savedPrescriber = {name:'', title:'', type:''};
   document.getElementById('saleDiagnosis').value='';
   document.getElementById('patientName').value=''; document.getElementById('patientMobile').value='';
+  { const _a = document.getElementById('patientAge'); if(_a) _a.value=''; try{ clearSaleRxPhoto(); }catch(e){} }
   document.getElementById('payMethod').value='cash'; togglePartialCash();
   _pendingSaleRxId = null;
   renderCart();
@@ -674,7 +678,8 @@ function showReceipt(sale, keepSplit){
       </div>` : ''}
       ${sale.doctorName ? `<div class="r-sub" style="margin-top:-2px;">${formatPrescriberLine(sale)}</div>` : ''}
       ${sale.diagnosis ? `<div class="r-sub" style="margin-top:-2px;">রোগ: ${sale.diagnosis}</div>` : ''}
-      ${sale.patientName ? `<div class="r-sub" style="margin-top:-2px;">রোগী: ${sale.patientName}${sale.patientMobile?' • মোবাইল: '+sale.patientMobile:''}</div>` : ''}
+      ${sale.patientName ? `<div class="r-sub" style="margin-top:-2px;">রোগী: ${sale.patientName}${sale.patientAge?' • বয়স: '+sale.patientAge:''}${sale.patientMobile?' • মোবাইল: '+sale.patientMobile:''}</div>` : ''}
+      ${sale.rxPhoto ? `<div class="r-sub" style="margin-top:-2px;"><a href="#" onclick="viewRxPhoto('${sale.id}');return false;" style="color:#1a6e4a;font-weight:700;">📷 প্রেসক্রিপশনের ছবি দেখুন</a></div>` : ''}
       <table>
         <thead><tr><th class="num">ক্র</th><th>ওষুধ</th><th class="num">পরিমাণ</th><th class="num">দর</th><th class="num">মোট</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -726,7 +731,7 @@ function buildReceiptText(sale, dateStr, cust){
   if(cust && (cust.age||cust.ageMonths)) t += `বয়স: ${formatAge(cust)}\n`;
   if(sale.doctorName) t += formatPrescriberLine(sale) + `\n`;
   if(sale.diagnosis) t += `রোগ: ${sale.diagnosis}\n`;
-  if(sale.patientName) t += `রোগী: ${sale.patientName}${sale.patientMobile?' • মোবাইল: '+sale.patientMobile:''}\n`;
+  if(sale.patientName) t += `রোগী: ${sale.patientName}${sale.patientAge?' • বয়স: '+sale.patientAge:''}${sale.patientMobile?' • মোবাইল: '+sale.patientMobile:''}\n`;
   t += `\n`;
   sale.items.forEach((it,i)=>{ t += `${i+1}. ${it.name} x${it.qty} = ${fmt(it.price*it.qty)}\n`; });
   t += `\nউপমোট: ${fmt(sale.subtotal)}\n`;
@@ -751,3 +756,79 @@ async function shareReceipt(){
   }
 }
 
+
+// ===== প্রেসক্রিপশনের ছবি (এই ফোনেই থাকে) =====
+// কাস্টমারের ছবির ডেটাবেস (ssn_photos) থেকে আলাদা — তাই ওগুলো ক্লাউডে যায় না, কাস্টমার-ছবির সাথে মেশেও না।
+// বিক্রির রেকর্ডে শুধু "rxPhoto:true" চিহ্ন যায় (ছোট) — যাতে অন্য ফোন জানে ছবি আছে।
+let _pendingRxPhoto = null, _rxDbP = null;
+function _rxDb(){
+  if(_rxDbP) return _rxDbP;
+  _rxDbP = new Promise((res, rej)=>{
+    try{
+      const r = indexedDB.open('ssn_rxphotos', 1);
+      r.onupgradeneeded = ()=>{ r.result.createObjectStore('p', {keyPath:'id'}); };
+      r.onsuccess = ()=>res(r.result);
+      r.onerror = ()=>rej(r.error);
+    }catch(e){ rej(e); }
+  });
+  return _rxDbP;
+}
+async function rxPhotoPut(saleId, dataUrl){
+  const db = await _rxDb();
+  return new Promise((res, rej)=>{ const t = db.transaction('p','readwrite'); t.objectStore('p').put({id:saleId, data:dataUrl, ts:Date.now()}); t.oncomplete = ()=>res(); t.onerror = ()=>rej(t.error); t.onabort = ()=>rej(t.error||new Error('abort')); });
+}
+async function rxPhotoGet(saleId){
+  const db = await _rxDb();
+  return new Promise((res, rej)=>{ const q = db.transaction('p').objectStore('p').get(saleId); q.onsuccess = ()=>res(q.result ? q.result.data : null); q.onerror = ()=>rej(q.error); });
+}
+// ছবি ছোট করা: লম্বা দিক সর্বোচ্চ ৯০০px, JPEG — সাধারণত ৫০-১২০ KB
+async function _rxResizeFile(file, maxSide, quality){
+  let bmp;
+  if(typeof createImageBitmap === 'function'){ bmp = await createImageBitmap(file); }
+  else {
+    bmp = await new Promise((res, rej)=>{ const u = URL.createObjectURL(file); const im = new Image(); im.onload = ()=>{ URL.revokeObjectURL(u); res(im); }; im.onerror = ()=>rej(new Error('image')); im.src = u; });
+  }
+  const w = bmp.width, h = bmp.height, k = Math.min(1, maxSide/Math.max(w,h));
+  const cv = document.createElement('canvas'); cv.width = Math.round(w*k); cv.height = Math.round(h*k);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  return cv.toDataURL('image/jpeg', quality);
+}
+async function pickSaleRxPhoto(evt){
+  const f = evt && evt.target && evt.target.files && evt.target.files[0];
+  if(!f) return;
+  try{
+    _pendingRxPhoto = await _rxResizeFile(f, 900, 0.6);
+    const img = document.getElementById('rxPhotoImg'), box = document.getElementById('rxPhotoPreview');
+    if(img) img.src = _pendingRxPhoto;
+    if(box) box.style.display = 'flex';
+  }catch(e){ console.error(e); _pendingRxPhoto = null; toast('ছবি পড়া যায়নি — আবার চেষ্টা করুন'); }
+  try{ evt.target.value = ''; }catch(e){}
+}
+function clearSaleRxPhoto(){
+  _pendingRxPhoto = null;
+  const img = document.getElementById('rxPhotoImg'), box = document.getElementById('rxPhotoPreview');
+  if(img) img.removeAttribute('src');
+  if(box) box.style.display = 'none';
+}
+async function _attachRxPhotoAfterSale(saleId, dataUrl){
+  try{
+    await rxPhotoPut(saleId, dataUrl);   // আগে ছবি সংরক্ষণ — তারপরেই "ছবি আছে" চিহ্ন বসে
+    const sale = sales.find(x=>x.id===saleId);
+    if(sale){
+      sale.rxPhoto = true; save(DB_KEYS.sale, sales);
+      try{ if(cloudReady()) shopColl('sales').doc(saleId).set({rxPhoto:true}, {merge:true}).catch(e=>console.error(e)); }catch(e){}
+    }
+  }catch(e){ console.error('rx photo save failed', e); toast('⚠ প্রেসক্রিপশনের ছবি সংরক্ষণ হয়নি (বিক্রি ঠিকই হয়েছে)'); }
+}
+async function viewRxPhoto(saleId){
+  try{
+    const data = await rxPhotoGet(saleId);
+    if(!data){ toast('এই ছবি এই ফোনে নেই — যে ফোনে বিক্রি করা হয়েছিল সেই ফোনে দেখুন'); return; }
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;';
+    ov.innerHTML = '<img alt="" style="max-width:100%;max-height:88%;border-radius:8px;"><div style="color:#fff;margin-top:10px;font-size:14px;">যেকোনো জায়গায় চাপুন — বন্ধ হবে</div>';
+    ov.querySelector('img').src = data;
+    ov.onclick = ()=>ov.remove();
+    document.body.appendChild(ov);
+  }catch(e){ console.error(e); toast('ছবি খোলা যায়নি'); }
+}
