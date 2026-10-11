@@ -933,16 +933,16 @@ Fexo 120mg
 
 <div class="toast" id="toast"></div>
 
-<script src="app-01-data.js" charset="utf-8"></script>
-<script src="app-02-ui.js" charset="utf-8"></script>
-<script src="app-03-medicines.js" charset="utf-8"></script>
-<script src="app-04-sale.js" charset="utf-8"></script>
-<script src="app-05-purchase.js" charset="utf-8"></script>
-<script src="app-06-people.js" charset="utf-8"></script>
-<script src="app-07-lab.js" charset="utf-8"></script>
-<script src="app-08-rx.js" charset="utf-8"></script>
-<script src="app-09-reports.js" charset="utf-8"></script>
-<script src="app-10-backup-cloud.js" charset="utf-8"></script>
-<script src="app-11-lock-init.js" charset="utf-8"></script>
+<script src="app-00-bigstore.js" charset="utf-8"></script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js"]</script>
+<script>
+/* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
+(function(){
+  var files = JSON.parse(document.getElementById('app-file-list').textContent);
+  function go(){ files.forEach(function(f){ var s = document.createElement('script'); s.src = f; s.charset = 'utf-8'; s.async = false; document.body.appendChild(s); }); }
+  var r = (window.__big && window.__big.ready) ? window.__big.ready : Promise.resolve();
+  r.then(go, go);
+})();
+</script>
 </body>
 </html>

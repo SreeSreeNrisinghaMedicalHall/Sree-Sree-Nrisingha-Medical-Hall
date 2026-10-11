@@ -645,6 +645,7 @@ function showReceipt(sale, keepSplit){
       </table>
       <div class="r-foot">ধন্যবাদ — সুস্থ থাকুন</div>
       <div class="r-foot" style="margin-top:6px;font-weight:700;">বিঃদ্রঃ বিক্রিত ঔষধ ফেরত হয় না।</div>
+      ${(sale.items||[]).some(it=>it.isAntibiotic) ? `<div class="r-foot" style="margin-top:26px;">.......................................<br>বিক্রেতার স্বাক্ষর ও তারিখ<br><span style="font-size:0.85em;">(এন্টিবায়োটিক বিক্রয়ের ক্যাশমেমো)</span></div>` : ''}
       ${shopQrHtml()}
     </div>`;
   window._lastReceiptText = buildReceiptText(sale, dateStr, cust);

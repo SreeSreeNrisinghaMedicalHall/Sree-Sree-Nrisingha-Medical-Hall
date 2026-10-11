@@ -523,5 +523,6 @@ window.addEventListener('online', ()=>{
   }
 });
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); });
+  const _regSW = ()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); };
+  if(document.readyState==='complete') _regSW(); else window.addEventListener('load', _regSW);
 }

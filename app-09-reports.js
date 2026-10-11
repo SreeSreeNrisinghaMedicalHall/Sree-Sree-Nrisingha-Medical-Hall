@@ -183,9 +183,28 @@ function rowToHtml(r){
       <div class="row-right"><div class="row-sub">${r.sale.date}</div></div>
     </div>`;
 }
+// এন্টিবায়োটিকের ক্রয় — ঔষধ প্রশাসনের নির্দেশনায় "ক্রয়-বিক্রয়" দুটোই রেজিস্টারে রাখতে বলা হয়েছে
+function _isAbxPurchase(p){
+  const med = medicines.find(m=>m.id===p.medicineId);
+  if(med) return !!med.isAntibiotic;
+  try{ return !!looksLikeAntibiotic(p.medicineName||'', ''); }catch(e){ return false; }
+}
+function buildAntibioticPurchaseRows(q, dFrom, dTo){
+  const rows = purchases.filter(p=>{
+    if(!_isAbxPurchase(p)) return false;
+    if(dFrom && p.date < dFrom) return false;
+    if(dTo && p.date > dTo) return false;
+    if(q && !medNameIncludes(p.medicineName||'', q)) return false;
+    return true;
+  });
+  rows.sort((a,b)=>(b.ts||0)-(a.ts||0));
+  return rows;
+}
 function buildAntibioticRegisterHtml(q, dFrom, dTo){
   const shop = (document.querySelector('.brand-name') && document.querySelector('.brand-name').textContent.trim()) || 'শ্রী শ্রী নৃসিংহ মেডিকেল হল';
   const rows = buildAntibioticRows(q||'', dFrom||'', dTo||'').slice().reverse();   // পুরনো আগে — রেজিস্টারের মতো
+  const purRows = buildAntibioticPurchaseRows(q||'', dFrom||'', dTo||'').slice().reverse();
+  const purBody = purRows.map((p,i)=>`<tr><td class="n">${i+1}</td><td class="d">${escapeHtml(p.date||'')}</td><td><b>${escapeHtml(p.medicineName||'')}</b> <span class="q">× ${escapeHtml(String(p.qty))}</span></td><td>${escapeHtml(p.supplierName||'—')}</td><td>${escapeHtml(p.batch||'—')}</td><td>${escapeHtml(p.expiry||'—')}</td></tr>`).join('');
   const now = new Date();
   const stamp = localDateStr(now)+' '+now.toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'});
   const range = (dFrom||dTo) ? ((dFrom||'শুরু')+' থেকে '+(dTo||'আজ')) : 'সব তারিখ';
@@ -206,9 +225,11 @@ button.pr{padding:9px 14px;border:0;border-radius:8px;background:#c9a227;font-we
 <div class="sub">সময়কাল: ${escapeHtml(range)}${q?' • ওষুধ: '+escapeHtml(q):''} • মোট ${rows.length}টা এন্ট্রি • তৈরি: ${escapeHtml(stamp)}<br>এই ফাইল অ্যাপ ছাড়াই খোলা ও ছাপা যায়।</div>
 <input class="s" id="q" placeholder="ওষুধ, রোগী, মোবাইল বা প্রেসক্রাইবার দিয়ে খুঁজুন…" oninput="f()">
 <table><thead><tr><th>#</th><th>তারিখ</th><th>এন্টিবায়োটিক × পরিমাণ</th><th>রোগী / মোবাইল</th><th>প্রেসক্রাইবার</th></tr></thead><tbody id="tb">${body || '<tr><td colspan="5">এই শর্তে কোনো এন্টিবায়োটিক বিক্রির রেকর্ড নেই</td></tr>'}</tbody></table>
+<h1 style="margin-top:22px;">এন্টিবায়োটিক ক্রয় রেজিস্টার <span class="q">(${purRows.length}টা এন্ট্রি)</span></h1>
+<table><thead><tr><th>#</th><th>তারিখ</th><th>এন্টিবায়োটিক × পরিমাণ</th><th>সরবরাহকারী</th><th>ব্যাচ</th><th>মেয়াদ</th></tr></thead><tbody id="tb2">${purBody || '<tr><td colspan="6">এই শর্তে কোনো এন্টিবায়োটিক ক্রয়ের রেকর্ড নেই</td></tr>'}</tbody></table>
 <p><button class="pr" onclick="window.print()">🖨 প্রিন্ট করুন</button></p>
 <div class="sig"><div>প্রোপ্রাইটরের স্বাক্ষর: ____________________</div><div>তারিখ: ______________</div></div>
-<script>function f(){var q=document.getElementById('q').value.toLowerCase(),r=document.querySelectorAll('#tb tr');for(var i=0;i<r.length;i++){r[i].style.display=(!q||r[i].textContent.toLowerCase().indexOf(q)>=0)?'':'none'}}<\/script>
+<script>function f(){var q=document.getElementById('q').value.toLowerCase(),r=document.querySelectorAll('#tb tr,#tb2 tr');for(var i=0;i<r.length;i++){r[i].style.display=(!q||r[i].textContent.toLowerCase().indexOf(q)>=0)?'':'none'}}<\/script>
 </body></html>`;
 }
 function downloadAntibioticRegister(){

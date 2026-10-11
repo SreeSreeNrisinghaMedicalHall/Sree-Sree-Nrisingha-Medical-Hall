@@ -1,7 +1,22 @@
 
 /* ---------------- Data layer (localStorage) ---------------- */
 const DB_KEYS = { med:'ssn_medicines', sale:'ssn_sales', purchase:'ssn_purchases', customer:'ssn_customers', supplier:'ssn_suppliers', payment:'ssn_payments', labTest:'ssn_lab_tests', prescription:'ssn_prescriptions', referrer:'ssn_referrers', testPrice:'ssn_test_prices' };
-function load(key){ try{ return JSON.parse(localStorage.getItem(key)) || []; }catch(e){ return []; } }
+function load(key){
+  try{
+    if(window.__big && __big.isBig(key)){
+      // বিক্রি/ক্রয়: IndexedDB থেকে আগেই লোড হয়ে আছে (app-00-bigstore.js)
+      const B = __big;
+      if(B.arr[key]){
+        const a = B.arr[key]; B.arr[key] = null; B.consumed[key] = true;
+        if(B.keys.every(k=>B.consumed[k])) B.setMigrated();
+        return a;
+      }
+      const out = []; (B.shadow[key]||new Map()).forEach(str=>{ try{ out.push(JSON.parse(str)); }catch(e){} });
+      return out;   // পরের বারগুলোতে (যেমন রিসাইকেল বিন থেকে ফেরানো) — সর্বশেষ লেখা অবস্থা থেকে
+    }
+    return JSON.parse(localStorage.getItem(key)) || [];
+  }catch(e){ return []; }
+}
 // Tombstones: ids the user has INTENTIONALLY deleted (deleteMedicine, deleteCustomer, etc. all
 // call addTombstone() right alongside their own save()). save()'s stale-overwrite recovery below
 // checks this list before reviving a record that's missing from what's about to be written —
@@ -166,7 +181,66 @@ function auditDiff(key, prev, next, fromCloud){
 }
 
 let _dataVersion = 0;   // save() প্রতিবার বাড়ায় — ভারী হিসাবের ক্যাশ ঠিক রাখতে
+// ---- বিক্রি/ক্রয়ের সংরক্ষণ (IndexedDB) ----
+// আগের save()-এর মতোই: ১) কেউ ভুলে বাদ পড়লে (মোছা বলে চিহ্নিত না হলে) ফিরিয়ে আনা, ২) ক্লাউডের স্ন্যাপশট
+// আসার সময় সদ্য-লেখা রেকর্ড না হারানো, ৩) মোছা রেকর্ড রিসাইকেল বিনে পাঠানো।
+// তফাত: পুরো তালিকা বারবার পড়ে (parse) না — শুধু বদলানো রেকর্ডটাই লেখে, তাই ডেটা বাড়লেও দ্রুত থাকে।
+function _bigPersist(key, data){
+  const B = window.__big;
+  const sh = B.shadow[key] || (B.shadow[key] = new Map());
+  const newSh = new Map(), puts = []; let total = 0;
+  for(let i=0;i<data.length;i++){
+    const rec = data[i];
+    if(!rec || !rec.id){ console.warn('bigstore: id ছাড়া রেকর্ড বাদ'); continue; }
+    const s = JSON.stringify(rec);
+    newSh.set(rec.id, s); total += s.length;
+    if(sh.get(rec.id) !== s) puts.push([rec.id, s]);
+  }
+  const dels = []; sh.forEach((_, id)=>{ if(!newSh.has(id)) dels.push(id); });
+  B.shadow[key] = newSh; B.bytes[key] = total;
+  B.write(key, puts, dels);
+}
+function _bigSave(key, data, fromCloud){
+  _dataVersion++;
+  const B = window.__big;
+  const sh = B.shadow[key] || (B.shadow[key] = new Map());
+  const removedRecs = [];
+  try{
+    if(Array.isArray(data) && data.every(x=>x && x.id)){
+      const tomb = new Set(getTombstones().map(t=>t.id));
+      const ourIds = new Set(data.map(x=>x.id));
+      sh.forEach((str, id)=>{
+        if(ourIds.has(id)) return;
+        try{
+          if(tomb.has(id)) removedRecs.push(JSON.parse(str));
+          else { data.push(JSON.parse(str)); ourIds.add(id); }
+        }catch(e){}
+      });
+      if(fromCloud){
+        const now = Date.now();
+        for(let i=0;i<data.length;i++){
+          const rec = data[i];
+          const ts = rec && _recentLocalWriteAt[rec.id];
+          if(ts && (now-ts) < LOCAL_WRITE_GRACE_MS){ const s = sh.get(rec.id); if(s){ try{ data[i] = JSON.parse(s); }catch(e){} } }
+        }
+      }
+    }
+    if(!fromCloud){ const now = Date.now(); data.forEach(rec=>{ if(rec && rec.id) _recentLocalWriteAt[rec.id] = now; }); }
+  }catch(e){ console.error('save() merge check failed', e); }
+  try{ if(removedRecs.length) auditDiff(key, removedRecs, data, !!fromCloud); }catch(e){ console.error('auditDiff failed', e); }
+  _bigPersist(key, data);
+  maybeTakeSafetySnapshot();
+  updateStorageUsageDisplay();
+  return true;
+}
+if(window.__big){
+  __big.onFail = function(){
+    if(window._bigFailShown) return; window._bigFailShown = true;
+    try{ alert('⚠️ গুরুত্বপূর্ণ: বিক্রি/ক্রয়ের তথ্য ফোনে সংরক্ষণ করতে সমস্যা হয়েছে।\n\nক্লাউডে তথ্য যাচ্ছে কি না দেখুন, আর এখনই সেটিংস → ব্যাকআপ ডাউনলোড করুন। অ্যাপ বন্ধ করে আবার খুলে দেখুন।'); }catch(e){}
+  };
+}
 function save(key, data, fromCloud){
+  if(window.__big && __big.isBig(key)) return _bigSave(key, data, fromCloud);
   _dataVersion++;
   let _prevForAudit = null;
   try{ _prevForAudit = JSON.parse(localStorage.getItem(key)); }catch(e){}
@@ -219,6 +293,10 @@ function save(key, data, fromCloud){
   updateStorageUsageDisplay();
   return true;
 }
+function _persistRaw(key, arr){   // merge ছাড়া সরাসরি বসানো (আর্কাইভ ফেরানোর সময়)
+  if(window.__big && __big.isBig(key)){ _bigPersist(key, arr); return; }
+  localStorage.setItem(key, JSON.stringify(arr));
+}
 function clearAllSnapshots(){
   try{
     const index = JSON.parse(localStorage.getItem('ssn_snapshot_index')||'[]');
@@ -252,6 +330,7 @@ function updateStorageUsageDisplay(){
   const bytes = estimateStorageUsageBytes();
   const mb = (bytes/1024/1024).toFixed(2);
   el.textContent = `এই ফোনে এখন প্রায় ${mb} MB তথ্য জমা আছে (সাধারণত ফোনভেদে সর্বোচ্চ ৫-১০ MB পর্যন্ত জায়গা থাকে — এর কাছাকাছি চলে গেলে নতুন এন্ট্রি সংরক্ষণ ব্যর্থ হতে পারে, তখন একটা সতর্কবার্তা দেখানো হবে)।`;
+  if(window.__big && __big.ok){ const bm = (Object.values(__big.bytes).reduce((a,b)=>a+(b||0),0)/1024/1024).toFixed(2); el.textContent += ` — এর বাইরে বিক্রি/ক্রয়ের তথ্য আলাদা বড় জায়গায় আছে প্রায় ${bm} MB (এখানে ৫ MB সীমা প্রযোজ্য না)।`; }
 }
 // Local "point-in-time" safety net, separate from (and in addition to) Cloud Backup/manual JSON
 // export — nothing about live localStorage, however carefully it's written to, survives the
@@ -573,8 +652,11 @@ function reconcileAfterRestore(prev){
 async function previewArchive(){
   if(!cloudLive){ toast('আর্কাইভ করতে হলে আগে ক্লাউড সংযোগ চালু থাকতে হবে'); return null; }
   const cutoff = Date.now() - ARCHIVE_AGE_MS;
-  const oldSales = sales.filter(s=>s.ts && s.ts<cutoff);
-  const oldPurchases = purchases.filter(p=>p.ts && p.ts<cutoff);
+  // এন্টিবায়োটিক রেজিস্টারের রেকর্ড (বিক্রি ও ক্রয়) ফোন থেকে সরানো হয় না — ঔষধ প্রশাসনের রেজিস্টার সবসময় হাতের কাছে থাকা দরকার
+  const _abxSale = s=>(s.items||[]).some(it=>it.isAntibiotic);
+  const _abxPur = p=>{ try{ return typeof _isAbxPurchase==='function' && _isAbxPurchase(p); }catch(e){ return false; } };
+  const oldSales = sales.filter(s=>s.ts && s.ts<cutoff && !_abxSale(s));
+  const oldPurchases = purchases.filter(p=>p.ts && p.ts<cutoff && !_abxPur(p));
   if(!oldSales.length && !oldPurchases.length){ toast('১ বছরের বেশি পুরনো কোনো রেকর্ড নেই'); return null; }
   try{
     const [salesSnap, purchSnap] = await Promise.all([
@@ -643,8 +725,8 @@ async function restoreArchivedHistory(){
     localStorage.setItem('ssn_deleted_ids', JSON.stringify(remainingTombstones));
     sales = [...cloudSales, ...localOnlySales];
     purchases = [...cloudPurchases, ...localOnlyPurchases];
-    localStorage.setItem(DB_KEYS.sale, JSON.stringify(sales));
-    localStorage.setItem(DB_KEYS.purchase, JSON.stringify(purchases));
+    _persistRaw(DB_KEYS.sale, sales);
+    _persistRaw(DB_KEYS.purchase, purchases);
     toast('✓ পুরনো ইতিহাস আবার ফিরিয়ে আনা হয়েছে');
     autoRecoverMissingCustomers('restoreArchivedHistory');
     renderDashboard(); rerenderCurrentSection();

@@ -1,8 +1,9 @@
-const CACHE_NAME = 'nrisingha-medical-v8';
+const CACHE_NAME = 'nrisingha-medical-v10';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
+  './app-00-bigstore.js',
   './app-01-data.js',
   './app-02-ui.js',
   './app-03-medicines.js',
