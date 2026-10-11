@@ -234,7 +234,7 @@ function addExpense(d){
   const isToday = (d===todayStr());
   const ts = isToday ? Date.now() : new Date(d+'T12:00:00').getTime();
   const id = uid();
-  const rec = { customerId:undefined, amount:amt, ts, date:d, type:'expense', note };
+  const rec = Object.assign({ customerId:undefined, amount:amt, ts, date:d, type:'expense', note }, sellerFields());
   delete rec.customerId;
   payments.push(Object.assign({id}, rec));
   save(DB_KEYS.payment, payments);
@@ -352,7 +352,7 @@ function renderDashboard(){
   const recentEl = document.getElementById('recentSales');
   const recent = [...sales].sort((a,b)=>b.ts-a.ts).slice(0,5);
   recentEl.innerHTML = recent.length ? recent.map(s=>`
-    <div class="row-item" onclick="showReceiptById('${s.id}')" style="cursor:pointer;"><div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.items.length} আইটেম</div></div>
+    <div class="row-item" onclick="showReceiptById('${s.id}')" style="cursor:pointer;"><div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.items.length} আইটেম${s.seller?' • '+escapeHtml(s.seller):''}</div></div>
     <div class="row-right"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">${s.payMethod==='due'?'বাকি':'নগদ'}</div></div></div>`).join('') : `<div class="empty-state">এখনো কোনো বিক্রয় হয়নি</div>`;
 }
 

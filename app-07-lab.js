@@ -344,14 +344,14 @@ function saveReferrerPayment(){
   r.due = Math.max((r.due||0) - amount, 0);
   save(DB_KEYS.referrer, referrers);
   const paymentId = uid();
-  payments.push({ id:paymentId, referrerId:r.id, amount, ts:Date.now(), date:todayStr(), type:'referrer_commission' });
+  payments.push(Object.assign({ id:paymentId, referrerId:r.id, amount, ts:Date.now(), date:todayStr(), type:'referrer_commission' }, sellerFields()));
   save(DB_KEYS.payment, payments);
   closeModal('referrerPaymentModalBackdrop');
   toast(`${fmt(amount)} কমিশন পরিশোধ করা হয়েছে ✓`);
   renderReferrerList();
   if(cloudReady()){
     shopColl('referrers').doc(r.id).set({due:r.due}, {merge:true}).catch(e=>console.error(e));
-    shopColl('payments').doc(paymentId).set({ referrerId:r.id, amount, ts:Date.now(), date:todayStr(), type:'referrer_commission' }).catch(e=>console.error(e));
+    shopColl('payments').doc(paymentId).set(Object.assign({ referrerId:r.id, amount, ts:Date.now(), date:todayStr(), type:'referrer_commission' }, sellerFields())).catch(e=>console.error(e));
   }
 }
 let editingLabTestId = null;

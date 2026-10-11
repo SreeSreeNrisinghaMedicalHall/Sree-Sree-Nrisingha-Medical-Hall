@@ -96,6 +96,7 @@
 
     <!-- SALE / POS -->
     <section id="sec-sale">
+      <div id="sellerBadge" onclick="editDeviceSeller()" style="cursor:pointer;margin:0 0 8px;padding:8px 12px;border-radius:12px;background:#eef6f1;border:1px solid #cfe3d6;font-size:13.5px;"></div>
       <div class="card">
         <label>ওষুধ খুঁজুন <span class="tag-en">Search medicine</span></label>
         <div style="display:flex;gap:8px;"><input type="text" id="posSearch" placeholder="নাম লিখুন বা বারকোড স্ক্যান করুন..." oninput="renderPosSearch()" onkeydown="posSearchKey(event)" style="flex:1;min-width:0;"><button type="button" class="btn btn-outline" onclick="posScanClick()" title="ক্যামেরায় বারকোড স্ক্যান">📷</button></div>
@@ -306,7 +307,9 @@
         <button class="btn btn-outline" style="flex:1;min-width:150px;" onclick="showOrderList()">🛒 কম স্টকের অর্ডার তালিকা</button>
         <button class="btn btn-outline" style="flex:1;min-width:150px;" onclick="showDeadStock()">🕸️ অনেকদিন বিক্রি হয়নি</button>
       </div>
-      <h3 class="section-h"><span class="dot"></span>কোম্পানি অনুযায়ী ক্রয়</h3>
+      <h3 class="section-h"><span class="dot"></span>বিক্রেতা অনুযায়ী হিসাব</h3>
+<div class="card" id="sellerReport"></div>
+<h3 class="section-h"><span class="dot"></span>কোম্পানি অনুযায়ী ক্রয়</h3>
       <div class="row-sub" style="margin-top:-4px;margin-bottom:8px;">ওষুধ ইনভেন্টরিতে যে কোম্পানির নাম লেখা আছে সেই অনুযায়ী হিসাব — আলাদা করে সাপ্লায়ার এড করার দরকার নেই। যেকোনো কোম্পানিতে ট্যাপ করলে বিস্তারিত তালিকা দেখাবে।</div>
       <div class="search-wrap" style="margin-bottom:8px;">
         <input type="text" id="companyPurchaseSearch" placeholder="কোম্পানির নাম দিয়ে খুঁজুন..." oninput="renderCompanyPurchaseReport()">

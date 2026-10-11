@@ -155,6 +155,7 @@ function scaleCartByAmount(){
 }
 function renderCart(){
   syncCartStock();
+  try{ renderSellerBadge(); }catch(e){}
   const el = document.getElementById('cartList');
   el.innerHTML = cart.length ? cart.map((c,i)=>`
     <div class="cart-item">
@@ -419,6 +420,7 @@ function completeSaleInner(){
   const saleRecord = { id:uid(), ts:Date.now(), date:todayStr(), items:cart, subtotal, discount, total,
     payMethod, cashPaidNow, dueAdded, doctorName, doctorTitle, doctorType, diagnosis:diagnosis||null, customerId:custId||null, customerName:cust?cust.name:null,
     patientName:patientName||null, patientMobile:patientMobile||null, rxId:_pendingSaleRxId||null };
+  Object.assign(saleRecord, sellerFields());   // এই ফোনের বিক্রেতার নাম (থাকলে) — কে বিক্রি করেছে
   if(cashPaidNow>0 && payChannel!=='cash') saleRecord.payChannel = payChannel;   // বিকাশ/নগদ/রকেট/কার্ড — ক্যাশ বাক্সের হিসাবে ধরা হয় না
 
   // A completed sale naming this prescriber is a strong signal they're in active use again —

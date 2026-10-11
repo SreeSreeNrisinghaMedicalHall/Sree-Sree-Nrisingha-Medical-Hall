@@ -139,6 +139,7 @@ function renderReports(){
   const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6);
   document.getElementById('topMeds').innerHTML = top.length ? top.map(([name,qty])=>`
     <div class="row-item"><div class="row-title">${name}</div><span class="badge badge-green">${qty} বিক্রি</span></div>`).join('') : `<div class="empty-state">এই সময়কালে কোনো বিক্রয় নেই</div>`;
+  try{ renderSellerReport(sInRange, range); renderSellerBadge(); }catch(e){ console.error('seller report', e); }
   renderCompanyPurchaseReport();
   renderAntibioticRegister();
 }
@@ -285,7 +286,7 @@ function _rsRender(){
     const patientLine = (pn && pn !== (s.customerName||'').trim()) ? ` <span style="color:#7a5b00;font-weight:700;">• রোগী: ${escapeHtml(pn)}</span>` : '';
     const rid = 'rsResell_'+s.id;
     return `<div class="row-item" style="flex-wrap:wrap;">
-      <div onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;flex:1 1 60%;min-width:0;"><div class="row-title">${escapeHtml(cust)}${patientLine}</div><div class="row-sub">${s.items.length} আইটেম • ${s.date}</div></div>
+      <div onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;flex:1 1 60%;min-width:0;"><div class="row-title">${escapeHtml(cust)}${patientLine}</div><div class="row-sub">${s.items.length} আইটেম • ${s.date}${s.seller?' • '+escapeHtml(s.seller):''}</div></div>
       <div class="row-right" onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">${s.payMethod==='due'?'বাকি':'নগদ'}</div></div>
       <div style="flex:1 1 100%;display:flex;gap:6px;margin-top:6px;" onclick="event.stopPropagation()">
         <input type="text" id="${rid}_amt" placeholder="🔁 এই হারে কত টাকার ওষুধ" inputmode="numeric" style="flex:1;min-width:0;">
@@ -422,3 +423,52 @@ async function shareOrderText(i){
   }catch(e){ if(e && e.name==='AbortError') return; }
   prompt('তালিকা কপি করুন:', t);
 }
+
+
+// ===== বিক্রেতা: এই ফোনে কে বিক্রি করছে =====
+// প্রতিটা ফোনে একবার নাম বসালে ওই ফোনের প্রতিটা বিক্রি, বাকি আদায়, খরচ ও পরিশোধে নামটা নিজে লেখা থাকে (ক্লাউডেও যায়)।
+// আলাদা PIN/লগইন লাগে না। নাম না বসালে আগের মতোই চলে, রেকর্ডে কিছু যোগ হয় না।
+function getDeviceSeller(){ try{ return (localStorage.getItem('ssn_device_seller')||'').trim(); }catch(e){ return ''; } }
+function sellerFields(){ const n = getDeviceSeller(); return n ? {seller:n} : {}; }
+function renderSellerBadge(){
+  const el = document.getElementById('sellerBadge'); if(!el) return;
+  const n = getDeviceSeller();
+  el.innerHTML = n
+    ? `👤 এই ফোনের বিক্রেতা: <b>${escapeHtml(n)}</b> <span style="opacity:.7;">✎ বদলান</span>`
+    : `👤 <b>বিক্রেতার নাম বসান</b> <span style="opacity:.7;">— প্রতিটা বিক্রিতে নাম লেখা থাকবে (এই ফোনে একবার)</span>`;
+}
+function editDeviceSeller(){
+  const cur = getDeviceSeller();
+  const v = prompt('এই ফোনের বিক্রেতার নাম লিখুন (প্রতিটা বিক্রিতে এই নাম লেখা থাকবে)।\n\nনাম মুছে খালি রাখলে নাম লেখা বন্ধ হবে।', cur);
+  if(v === null) return;
+  const n = v.trim().slice(0,30);
+  try{ if(n) localStorage.setItem('ssn_device_seller', n); else localStorage.removeItem('ssn_device_seller'); }catch(e){}
+  renderSellerBadge();
+  toast(n ? ('বিক্রেতা: '+n) : 'বিক্রেতার নাম মুছে ফেলা হয়েছে');
+}
+function renderSellerReport(sInRange, range){
+  const el = document.getElementById('sellerReport'); if(!el) return;
+  const g = {};
+  const slot = n => g[n] || (g[n] = {n:0, total:0, cash:0, due:0, coll:0, out:0});
+  sInRange.forEach(s=>{ const x = slot((s.seller||'').trim()); x.n++; x.total += s.total||0; x.cash += s.payChannel ? 0 : _saleCash(s); x.due += s.dueAdded||0; });
+  payments.forEach(p=>{
+    if(!inRange(p.date, range)) return;
+    if(p.customerId && !p.type){ if(!p.channel) slot((p.seller||'').trim()).coll += p.amount||0; }
+    else if(p.type==='expense' || p.type==='supplier_payment' || p.type==='referrer_commission'){ slot((p.seller||'').trim()).out += p.amount||0; }
+  });
+  const names = Object.keys(g).filter(k=>k);
+  if(!names.length){
+    el.innerHTML = '<div class="empty-state">এখনো কোনো বিক্রেতার নাম বসানো হয়নি।<br>বিক্রয় ট্যাবের ওপরে "👤 বিক্রেতার নাম বসান" লাইনে চাপ দিয়ে প্রতিটা ফোনে একবার নাম দিন।</div>';
+    return;
+  }
+  const rows = Object.keys(g).sort((a,b)=>g[b].total-g[a].total).map(k=>{
+    const x = g[k];
+    const label = k ? escapeHtml(k) : '<span style="opacity:.7;">নাম ছাড়া (আগের বা নাম না বসানো)</span>';
+    return `<div class="row-item" style="flex-wrap:wrap;">
+      <div style="flex:1 1 60%;min-width:0;"><div class="row-title">${label}</div>
+        <div class="row-sub">${x.n}টা মেমো • নগদ বিক্রি ${fmt(x.cash)} • বাকি আদায় ${fmt(x.coll)} • বাকি দিয়েছেন ${fmt(x.due)} • খরচ/পরিশোধ ${fmt(x.out)}</div></div>
+      <div class="row-right"><div class="row-title">${fmt(x.total)}</div><div class="row-sub">মোট বিক্রি</div></div></div>`;
+  }).join('');
+  el.innerHTML = rows + '<div class="row-sub" style="margin-top:6px;">ল্যাব টেস্ট, ক্রয় ও আগের হিসাবে নাম থাকে না। ক্যাশ বক্সের সাথে মেলাতে "নগদ বিক্রি + বাকি আদায় − খরচ/পরিশোধ" দেখুন।</div>';
+}
+try{ renderSellerBadge(); }catch(e){}

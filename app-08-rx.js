@@ -939,7 +939,7 @@ function savePayment(){
   save(DB_KEYS.customer, customers);
   const paymentId = uid();
   const _payTs = Date.now();
-  const _payRec = { customerId:c.id, amount, ts:_payTs, date:todayStr() };
+  const _payRec = Object.assign({ customerId:c.id, amount, ts:_payTs, date:todayStr() }, sellerFields());
   if(_payForName) _payRec.forName = _payForName;
   { const _ch = (document.getElementById('paymentChannel')||{}).value || 'cash'; if(_ch!=='cash') _payRec.channel = _ch; }   // বিকাশ/নগদ... হলে ক্যাশ বাক্সে ধরা হয় না
   payments.push(Object.assign({ id:paymentId }, _payRec));
@@ -1477,7 +1477,7 @@ function supplierMoneyDialog(supId, mode){   // mode: 'pay' | 'adjust'
     }
     this.disabled = true;   // দুবার চাপ ঠেকাতে
     const pid = uid(), ts = Date.now();
-    const rec = { supplierId:supId, amount, ts, date:todayStr(), type: isPay?'supplier_payment':'supplier_due_adjustment' };
+    const rec = Object.assign({ supplierId:supId, amount, ts, date:todayStr(), type: isPay?'supplier_payment':'supplier_due_adjustment' }, sellerFields());
     payments.push(Object.assign({id:pid}, rec));
     save(DB_KEYS.payment, payments);
     if(cloudReady()){ shopColl('payments').doc(pid).set(rec).catch(e=>console.error(e)); }
