@@ -364,6 +364,48 @@ function maybeTakeSafetySnapshotLegacy(){
 
 let _lastSnapJson = null;
 let _snapBusy = false;
+// ===== রিস্টোর পয়েন্ট ছোট করে রাখা =====
+// আগে প্রতিটা কপি পুরো তথ্যের হুবহু লেখা (JSON) ছিল — বিক্রি বাড়লে ৪২টা কপি মিলে শত শত MB হয়ে যেত।
+// এখন gzip করে রাখা হয় (সাধারণত ৫-১০ গুণ ছোট)। রাখার আগেই খুলে মিলিয়ে দেখা হয় — না মিললে আগের মতো সাধারণ লেখাই রাখা হয়।
+// ব্রাউজারে ফিচার না থাকলেও আগের মতোই চলে। আগের (সাধারণ) কপিগুলোও ফেরানো যায়।
+async function _gzip(str){
+  if(typeof CompressionStream === 'undefined' || typeof DecompressionStream === 'undefined') return null;
+  try{
+    const out = await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+    const back = await _gunzip(out);
+    return back === str ? out : null;
+  }catch(e){ console.error('gzip failed', e); return null; }
+}
+async function _gunzip(buf){
+  return await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+async function _snapRecordJson(rec){
+  if(rec.json) return rec.json;
+  if(rec.gz) return await _gunzip(rec.gz);
+  throw new Error('খালি রিস্টোর পয়েন্ট');
+}
+// আগের সাধারণ কপিগুলো একবার ছোট করা (প্রতিটা মিলিয়ে দেখে, তারপরেই বদলায়)
+async function compactOldSnapshots(){
+  try{
+    if(localStorage.getItem('ssn_snap_compacted_v1') === '1') return;
+    if(typeof CompressionStream === 'undefined') return;
+    const metas = await HistDB.getAll('snapmeta');
+    let allDone = true;
+    for(const m of metas){
+      const rec = await HistDB.get('snapshots', m.ts);
+      if(!rec || !rec.json) continue;
+      const gz = await _gzip(rec.json);
+      if(!gz){ allDone = false; continue; }
+      await HistDB.run(['snapshots','snapmeta'],'readwrite',t=>{
+        t.objectStore('snapshots').put({ts:m.ts, gz});
+        t.objectStore('snapmeta').put(Object.assign({}, m, {size: gz.byteLength}));
+      });
+      await new Promise(r=>setTimeout(r, 30));
+    }
+    if(allDone) localStorage.setItem('ssn_snap_compacted_v1','1');
+  }catch(e){ console.error('compactOldSnapshots failed', e); }
+}
+setTimeout(()=>{ try{ compactOldSnapshots(); }catch(e){} }, 25000);
 function _snapPayload(){ return JSON.stringify({ medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices }); }
 async function takeSnapshotNow(note){
   if(_snapBusy) return false;
@@ -372,9 +414,10 @@ async function takeSnapshotNow(note){
     const json = _snapPayload();
     if(!note && json === _lastSnapJson) return false; // nothing changed since last restore point
     const ts = Date.now();
+    const gz = await _gzip(json);
     await HistDB.run(['snapshots','snapmeta'],'readwrite',t=>{
-      t.objectStore('snapshots').put({ts, json});
-      t.objectStore('snapmeta').put({ts, m:medicines.length, s:sales.length, c:customers.length, size:json.length, note:note||''});
+      t.objectStore('snapshots').put(gz ? {ts, gz} : {ts, json});
+      t.objectStore('snapmeta').put({ts, m:medicines.length, s:sales.length, c:customers.length, size:(gz ? gz.byteLength : json.length), note:note||''});
     });
     _lastSnapJson = json;
     localStorage.setItem('ssn_snapshot_last', String(ts));
@@ -519,7 +562,7 @@ async function confirmRestoreSnapshotIDB(ts){
   try{
     const rec = await HistDB.get('snapshots', ts);
     if(!rec){ toast('রিস্টোর পয়েন্ট পাওয়া যায়নি'); return; }
-    const snap = JSON.parse(rec.json); snap.ts = ts;
+    const snap = JSON.parse(await _snapRecordJson(rec)); snap.ts = ts;
     let ok = false;
     try{ ok = confirm(`${new Date(ts).toLocaleString('bn-BD')}-এর অবস্থায় ফিরে যাবেন?\n\nএখন: ওষুধ ${medicines.length}, বিক্রয় ${sales.length}, কাস্টমার ${customers.length}\nসেই সময়ে: ওষুধ ${snap.medicines.length}, বিক্রয় ${snap.sales.length}, কাস্টমার ${snap.customers.length}\n\nপুনরুদ্ধারের আগে এখনকার অবস্থাও একটা রিস্টোর পয়েন্ট হিসেবে জমা থাকবে। ক্লাউড চালু থাকলে ফেরানো তথ্য ক্লাউডেও পাঠানো হবে।`); }catch(e){ ok = false; }
     if(!ok) return;
