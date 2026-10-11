@@ -117,6 +117,7 @@ function showProfitHistory(){
 // ঢোকা: নগদ বিক্রয় (শুধু নগদ পাওয়া অংশ — বাকি অংশ নয়) + টেস্ট ফি + কাস্টমারের বাকি জমা
 // বেরোনো: নগদ ক্রয় (বাকিতে ক্রয় বাদ) + সাপ্লায়ারকে পরিশোধ + ডাক্তারের কমিশন পরিশোধ + দোকানের অন্যান্য খরচ
 // শুরুর ক্যাশ ও গুনে পাওয়া ক্যাশ আপনি নিজে লিখবেন (এই ফোনেই সেভ থাকে)।
+const PAY_CHANNELS = {cash:'নগদ', bkash:'বিকাশ', nagad:'নগদ (Nagad)', rocket:'রকেট', bank:'কার্ড/ব্যাংক'};
 function _saleCash(s){ return (s.cashPaidNow!==undefined && s.cashPaidNow!==null) ? (s.cashPaidNow||0) : Math.max(0,(s.total||0)-(s.dueAdded||0)); }
 function computeCashDay(d){
   const daySales = sales.filter(x=>x.date===d);
@@ -131,16 +132,21 @@ function computeCashDay(d){
   const creditPur = dayPur.filter(p=>p.credit);
   const sum = (arr,f)=>arr.reduce((a,x)=>a+(f(x)||0),0);
   const r = {
-    saleCash: sum(daySales,_saleCash), saleCount: daySales.length,
+    saleCash: sum(daySales,x=>x.payChannel?0:_saleCash(x)), saleCount: daySales.length,
     saleDue: sum(daySales,x=>x.dueAdded||0),
     lab: sum(dayLab,x=>labTestTotals(x).price), labCount: dayLab.length,
-    coll: sum(collections,x=>x.amount), collections,
+    coll: sum(collections,x=>x.channel?0:x.amount), collections,
     purCash: sum(cashPur,x=>x.qty*x.price), purCashCount: cashPur.length,
     purCredit: sum(creditPur,x=>x.qty*x.price),
     supPaid: sum(supPaid,x=>x.amount), supPaidList: supPaid,
     comm: sum(commPaid,x=>x.amount),
     exp: sum(expList,x=>x.amount), expList
   };
+  // বিকাশ/নগদ/রকেট/কার্ডে পাওয়া টাকা ক্যাশ বাক্সে ঢোকে না — আলাদা হিসাব (অ্যাকাউন্টের সাথে মেলানোর জন্য)
+  r.digital = {};
+  daySales.forEach(x=>{ if(x.payChannel){ r.digital[x.payChannel] = (r.digital[x.payChannel]||0) + _saleCash(x); } });
+  collections.forEach(x=>{ if(x.channel){ r.digital[x.channel] = (r.digital[x.channel]||0) + (x.amount||0); } });
+  r.digitalTotal = Object.values(r.digital).reduce((a,b)=>a+b,0);
   r.cashIn = r.saleCash + r.lab + r.coll;
   r.cashOut = r.purCash + r.supPaid + r.comm + r.exp;
   r.net = r.cashIn - r.cashOut;
@@ -167,7 +173,7 @@ function showCashBook(d){
   const G='#067647', R='#b42318';
   const collRows = r.collections.sort((a,b)=>(b.ts||0)-(a.ts||0)).map(p=>{
     const tm = p.ts ? new Date(p.ts).toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'}) : '';
-    return line('↳ '+escapeHtml(custName(p.customerId))+(p.forName?' <span class="row-sub">(নামে: '+escapeHtml(p.forName)+')</span>':''), tm, p.amount, G);
+    return line('↳ '+escapeHtml(custName(p.customerId))+(p.channel?' <span class="row-sub">['+escapeHtml(PAY_CHANNELS[p.channel]||p.channel)+' — ক্যাশে নয়]</span>':'')+(p.forName?' <span class="row-sub">(নামে: '+escapeHtml(p.forName)+')</span>':''), tm, p.amount, G);
   }).join('');
   const expRows = r.expList.slice().sort((a,b)=>(b.ts||0)-(a.ts||0)).map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed #e3e3e3;"><div style="min-width:0;overflow-wrap:anywhere;">↳ ${escapeHtml(p.note||'খরচ')}</div><div style="display:flex;align-items:center;gap:8px;white-space:nowrap;"><b style="color:#b42318;">${fmt(p.amount)}</b><button class="btn btn-sm btn-outline" style="padding:2px 8px;" onclick="deleteExpense('${p.id}','${d}')">✕</button></div></div>`).join('');
   const supRows = r.supPaidList.map(p=>line('↳ '+escapeHtml(supName(p.supplierId)), '', p.amount, R)).join('');
@@ -215,6 +221,7 @@ function showCashBook(d){
       <label class="row-sub">বাক্সে গুনে আসলে কত পেলেন (টাকা) — মিলিয়ে দেখতে</label>
       <input type="number" inputmode="decimal" value="${counted!==null?counted:''}" placeholder="গুনে লিখুন" oninput="_cashLive('count','${d}',this.value)" style="width:100%;box-sizing:border-box;">
     </div>
+    ${r.digitalTotal>0?`<div style="margin-top:12px;padding:10px 12px;border-radius:12px;background:#eef4ff;border:1px solid #cfdcf7;"><div style="font-weight:800;">📱 ক্যাশ বাক্সে ঢোকেনি (বিকাশ/নগদ/কার্ড): ${fmt(r.digitalTotal)}</div>${Object.keys(r.digital).map(k=>`<div class="row-sub">• ${escapeHtml(PAY_CHANNELS[k]||k)}: ${fmt(r.digital[k])}</div>`).join('')}<div class="row-sub" style="margin-top:4px;">এই টাকা আপনার মোবাইল/ব্যাংক অ্যাকাউন্টে এসেছে — সেখানকার হিসাবের সাথে মিলিয়ে নিন।</div></div>`:''}
     <div id="cashDiffBox">${diffHtml}</div>
     <div class="row-sub" style="margin-top:10px;line-height:1.5;">নোট: খরচ লিখলে ক্যাশের হিসাবে বাদ যায় (ক্লাউডেও সেভ হয়)। "আজকের নিট লাভ" কার্ডে এই খরচ বাদ ধরা হয়। শুরুর ও গুনে পাওয়া ক্যাশ শুধু এই ফোনে সেভ থাকে।</div>`;
   openModal('detailModalBackdrop');
@@ -309,6 +316,26 @@ function renderDashboard(){
       } else { mcEl.style.display = 'none'; }
     }
   }catch(e){ console.error('missing-customer banner failed', e); }
+
+  // স্টক মাইনাস সতর্কতা (শুধু মালিকের জন্য): দুই ফোন থেকে একই সময়ে শেষ পিসটা বিক্রি হলে (বা দোকানে থাকা জিনিসের হিসাব ভুল থাকলে)
+  // স্টক শূন্যের নিচে নেমে যায়। এটা লুকানো হয় না — আসল গুনে ওষুধ ট্যাব থেকে ঠিক করে দিলেই সতর্কতা সরে যায়।
+  try{
+    let ne = document.getElementById('negStockWarn');
+    if(!ne){
+      const ref = document.getElementById('missingCustWarn');
+      if(ref && ref.parentNode){ ne = document.createElement('div'); ne.id = 'negStockWarn'; ne.className = ref.className; ne.style.cssText = ref.style.cssText; ref.parentNode.insertBefore(ne, ref); }
+    }
+    if(ne){
+      const neg = currentRole()==='owner' ? medicines.filter(m=>(Number(m.stock)||0) < 0) : [];
+      if(neg.length){
+        ne.style.display = 'block';
+        ne.innerHTML = `<div class="row-sub" style="color:var(--red);font-weight:700;margin-bottom:4px;">⚠ ${neg.length}টা ওষুধের স্টক মাইনাসে (খাতার চেয়ে বেশি বিক্রি হয়েছে):</div>` +
+          neg.slice(0,6).map(m=>`<div class="row-sub" style="cursor:pointer;" onclick="goToMedicine('${m.id}')">• ${escapeHtml(m.name||'')} — স্টক ${m.stock}</div>`).join('') +
+          (neg.length>6 ? `<div class="row-sub">…আরও ${neg.length-6}টা</div>` : '') +
+          `<div class="row-sub" style="margin-top:4px;">দুই ফোনে একই সময়ে শেষ পিস বিক্রি হলে এমন হয়। আসলে কত আছে গুনে ওষুধ ট্যাব থেকে স্টক ঠিক করে দিন।</div>`;
+      } else { ne.style.display = 'none'; }
+    }
+  }catch(e){ console.error('negative-stock banner failed', e); }
 
   const soon = medicines.filter(m=>m.expiry).map(m=>({...m, days:(new Date(m.expiry)-new Date())/86400000})).filter(m=>m.days<60).sort((a,b)=>a.days-b.days);
   const expiryEl = document.getElementById('expiryList');

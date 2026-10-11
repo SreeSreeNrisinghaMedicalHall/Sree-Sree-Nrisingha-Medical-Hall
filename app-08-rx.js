@@ -910,6 +910,7 @@ function saveAdjustDue(){
 function dueText(v){ v=v||0; return v<0 ? 'অগ্রিম '+fmt(-v) : fmt(v); }
 let payingCustomerId = null;
 function openPaymentModal(id, forName){
+  { const _pc = document.getElementById('paymentChannel'); if(_pc) _pc.value = 'cash'; }
   payingCustomerId = id;
   _payForName = forName || null;
   reconcileOne(id);
@@ -940,6 +941,7 @@ function savePayment(){
   const _payTs = Date.now();
   const _payRec = { customerId:c.id, amount, ts:_payTs, date:todayStr() };
   if(_payForName) _payRec.forName = _payForName;
+  { const _ch = (document.getElementById('paymentChannel')||{}).value || 'cash'; if(_ch!=='cash') _payRec.channel = _ch; }   // বিকাশ/নগদ... হলে ক্যাশ বাক্সে ধরা হয় না
   payments.push(Object.assign({ id:paymentId }, _payRec));
   save(DB_KEYS.payment, payments);
   closeModal('paymentModalBackdrop');

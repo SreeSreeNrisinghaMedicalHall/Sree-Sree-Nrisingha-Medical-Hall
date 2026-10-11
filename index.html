@@ -98,7 +98,7 @@
     <section id="sec-sale">
       <div class="card">
         <label>ওষুধ খুঁজুন <span class="tag-en">Search medicine</span></label>
-        <input type="text" id="posSearch" placeholder="নাম লিখুন..." oninput="renderPosSearch()">
+        <div style="display:flex;gap:8px;"><input type="text" id="posSearch" placeholder="নাম লিখুন বা বারকোড স্ক্যান করুন..." oninput="renderPosSearch()" onkeydown="posSearchKey(event)" style="flex:1;min-width:0;"><button type="button" class="btn btn-outline" onclick="posScanClick()" title="ক্যামেরায় বারকোড স্ক্যান">📷</button></div>
         <div id="posSearchResults"></div>
       </div>
 
@@ -138,6 +138,16 @@
         <div id="partialCashWrap" style="display:none;margin-top:10px;">
           <label>এখন কত নগদ দিলো? (বাকি অংশ কাস্টমারের বাকিতে যোগ হবে)</label>
           <input type="number" id="cashPaidNow" value="0" min="0">
+        </div>
+        <div style="margin-top:10px;">
+          <label>টাকা কীভাবে পেলেন <span class="tag-en">Paid via</span></label>
+          <select id="payChannel">
+            <option value="cash">নগদ (হাতে)</option>
+            <option value="bkash">বিকাশ</option>
+            <option value="nagad">নগদ (Nagad অ্যাপ)</option>
+            <option value="rocket">রকেট</option>
+            <option value="bank">কার্ড / ব্যাংক</option>
+          </select>
         </div>
         <div class="divider"></div>
         <label>প্রেসক্রাইবারের ধরন <span class="tag-en">Prescriber type</span></label>
@@ -291,6 +301,10 @@
         <div class="stat warn" onclick="showReportDue()" style="cursor:pointer;"><div class="label">নতুন বাকি</div><div class="value" id="rDue">৳০</div></div>
         <div class="stat" onclick="showReportExpenses()" style="cursor:pointer;"><div class="label">দোকানের খরচ</div><div class="value" id="rExp" style="color:#b42318;">৳০</div></div>
         <div class="stat accent" onclick="showProfitHistory()" style="cursor:pointer;"><div class="label">নিট লাভ (খরচ বাদে) ▸ ইতিহাস</div><div class="value" id="rNet">৳০</div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px;">
+        <button class="btn btn-outline" style="flex:1;min-width:150px;" onclick="showOrderList()">🛒 কম স্টকের অর্ডার তালিকা</button>
+        <button class="btn btn-outline" style="flex:1;min-width:150px;" onclick="showDeadStock()">🕸️ অনেকদিন বিক্রি হয়নি</button>
       </div>
       <h3 class="section-h"><span class="dot"></span>কোম্পানি অনুযায়ী ক্রয়</h3>
       <div class="row-sub" style="margin-top:-4px;margin-bottom:8px;">ওষুধ ইনভেন্টরিতে যে কোম্পানির নাম লেখা আছে সেই অনুযায়ী হিসাব — আলাদা করে সাপ্লায়ার এড করার দরকার নেই। যেকোনো কোম্পানিতে ট্যাপ করলে বিস্তারিত তালিকা দেখাবে।</div>
@@ -460,6 +474,8 @@
       <div><label>ব্যাচ নম্বর</label><input type="text" id="mBatch"></div>
       <div><label>মেয়াদ উত্তীর্ণের তারিখ</label><input type="date" id="mExpiry"></div>
     </div>
+    <label>বারকোড (ঐচ্ছিক) — প্যাকেটের গায়ের নম্বর</label>
+    <div style="display:flex;gap:8px;"><input type="text" id="mBarcode" inputmode="numeric" placeholder="স্ক্যান করুন বা লিখুন" style="flex:1;min-width:0;"><button type="button" class="btn btn-outline" onclick="startBarcodeScan(function(c){document.getElementById('mBarcode').value=c;})">📷 স্ক্যান</button></div>
     <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
       <input type="checkbox" id="mAntibiotic" style="width:18px;height:18px;">
       <label for="mAntibiotic" style="margin:0;">এটি একটি এন্টিবায়োটিক <span class="tag-en">Antibiotic</span></label>
@@ -834,6 +850,8 @@ Fexo 120mg
     <div class="row-sub" style="margin-top:2px;">বর্তমান বাকি: <b id="paymentCurrentDue"></b></div>
     <label>এখন কত টাকা দিলেন? *</label>
     <input type="number" id="paymentAmount" min="0" placeholder="৳">
+    <label style="margin-top:8px;">টাকা কীভাবে পেলেন</label>
+    <select id="paymentChannel"><option value="cash">নগদ (হাতে)</option><option value="bkash">বিকাশ</option><option value="nagad">নগদ (Nagad অ্যাপ)</option><option value="rocket">রকেট</option><option value="bank">কার্ড / ব্যাংক</option></select>
     <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="clearFullDue()">সম্পূর্ণ বাকি একসাথে শোধ</button>
     <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="savePayment()">জমা নিশ্চিত করুন</button>
   </div>

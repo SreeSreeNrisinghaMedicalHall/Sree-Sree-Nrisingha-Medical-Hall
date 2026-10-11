@@ -1,7 +1,48 @@
 /* ---------------- POS Sale ---------------- */
 let _posReturnPending = false;
+// ===== বারকোড =====
+// ১) বারকোড স্ক্যানার (USB/ব্লুটুথ) নম্বর টাইপ করার মতো করে পাঠায় — সার্চ ঘরে ঠিক বারকোড মিললেই ওষুধ কার্টে উঠে যায়।
+// ২) ক্যামেরা স্ক্যান: ফোনের ব্রাউজারে BarcodeDetector থাকলে চলে (না থাকলে বার্তা দেখায়)।
+function addByBarcode(code){
+  const med = medicines.find(m=>m.barcode && m.barcode===String(code).trim());
+  if(!med){ toast('বারকোড '+code+' কোনো ওষুধে বসানো নেই — ওষুধ সম্পাদনায় গিয়ে বারকোড বসান'); return false; }
+  if(!(med.stock>0)) toast('⚠️ '+med.name+' — স্টকে নেই (খাতা অনুযায়ী)');
+  addToCart(med.id); return true;
+}
+function posSearchKey(e){
+  if(e.key !== 'Enter') return;
+  const v = (e.target.value||'').trim();
+  if(/^[0-9]{6,}$/.test(v)){ e.preventDefault(); addByBarcode(v); }
+}
+async function startBarcodeScan(onCode){
+  if(!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    toast('এই ফোনের ব্রাউজারে ক্যামেরা-স্ক্যান চলে না — বারকোড স্ক্যানার ব্যবহার করুন বা নম্বর হাতে লিখুন'); return;
+  }
+  let stream = null, stopped = false;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:200001;background:#000;display:flex;flex-direction:column;';
+  ov.innerHTML = '<video playsinline muted style="flex:1;width:100%;object-fit:cover;"></video><div style="padding:14px;text-align:center;color:#fff;">বারকোড ক্যামেরার সামনে ধরুন<br><button type="button" id="bcClose" class="btn" style="margin-top:10px;">বন্ধ করুন</button></div>';
+  document.body.appendChild(ov);
+  const stop = ()=>{ stopped = true; try{ if(stream) stream.getTracks().forEach(t=>t.stop()); }catch(e){} ov.remove(); };
+  ov.querySelector('#bcClose').onclick = stop;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+    const v = ov.querySelector('video'); v.srcObject = stream; await v.play();
+    let formats = ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf','qr_code'];
+    try{ const sup = await BarcodeDetector.getSupportedFormats(); formats = formats.filter(f=>sup.indexOf(f)>=0); }catch(e){}
+    const det = new BarcodeDetector({formats});
+    const loop = async ()=>{
+      if(stopped) return;
+      try{ const r = await det.detect(v); if(r && r.length){ const code = r[0].rawValue; stop(); onCode(code); return; } }catch(e){}
+      setTimeout(loop, 250);
+    };
+    loop();
+  }catch(e){ console.error(e); stop(); toast('ক্যামেরা চালু করা যায়নি — ক্যামেরার অনুমতি দিন'); }
+}
+function posScanClick(){ startBarcodeScan(function(code){ addByBarcode(code); }); }
 function renderPosSearch(){
   const q = document.getElementById('posSearch').value.toLowerCase();
+  if(/^[0-9]{8,14}$/.test(q) && medicines.some(m=>m.barcode===q)){ addByBarcode(q); return; }
   const el = document.getElementById('posSearchResults');
   if(!q){ el.innerHTML=''; return; }
   const anyMatch = rankMeds(medicines, q, false);
@@ -340,6 +381,7 @@ function completeSaleInner(){
   const discount = parseFloat(document.getElementById('saleDiscount').value)||0;
   const total = Math.max(subtotal-discount,0);
   const payMethod = document.getElementById('payMethod').value;
+  const payChannel = (document.getElementById('payChannel')||{}).value || 'cash';
   const custId = document.getElementById('saleCustomer').value;
   const cust = customers.find(c=>c.id===custId);
   const doctorName = document.getElementById('saleDoctorName').value.trim();
@@ -377,6 +419,7 @@ function completeSaleInner(){
   const saleRecord = { id:uid(), ts:Date.now(), date:todayStr(), items:cart, subtotal, discount, total,
     payMethod, cashPaidNow, dueAdded, doctorName, doctorTitle, doctorType, diagnosis:diagnosis||null, customerId:custId||null, customerName:cust?cust.name:null,
     patientName:patientName||null, patientMobile:patientMobile||null, rxId:_pendingSaleRxId||null };
+  if(cashPaidNow>0 && payChannel!=='cash') saleRecord.payChannel = payChannel;   // বিকাশ/নগদ/রকেট/কার্ড — ক্যাশ বাক্সের হিসাবে ধরা হয় না
 
   // A completed sale naming this prescriber is a strong signal they're in active use again —
   // so un-hide them if an earlier accidental × tap had hidden this name from suggestions.
@@ -411,7 +454,7 @@ function completeSaleInner(){
     shopColl('sales').doc(saleRecord.id).set(saleRecord).catch(e=>{ console.error(e); toast('⚠️ ক্লাউডে বিক্রয় সংরক্ষণ ব্যর্থ হয়েছে — এই বিক্রয় আপাতত শুধু এই ফোনেই আছে'); });
   }
 
-  cart = []; document.getElementById('saleDiscount').value=0; document.getElementById('saleCustomer').value=''; _saleCustSel='';
+  cart = []; { const _pc = document.getElementById('payChannel'); if(_pc) _pc.value = 'cash'; } document.getElementById('saleDiscount').value=0; document.getElementById('saleCustomer').value=''; _saleCustSel='';
   document.getElementById('saleCustomerSearch').value='';
   document.getElementById('saleDoctorName').value=''; document.getElementById('saleDoctorTitle').value='';
   document.getElementById('saleDoctorType').value=''; _savedPrescriber = {name:'', title:'', type:''};
@@ -638,7 +681,7 @@ function showReceipt(sale, keepSplit){
         <tr><td>উপমোট</td><td class="num">${fmt(sale.subtotal)}</td></tr>
         ${sale.discount>0?`<tr><td>ছাড়</td><td class="num">-${fmt(sale.discount)}</td></tr>`:''}
         <tr class="r-total-row"><td>সর্বমোট</td><td class="num">${fmt(sale.total)}</td></tr>
-        <tr><td>নগদ পরিশোধ</td><td class="num">${fmt(cashPaidNow)}</td></tr>
+        <tr><td>${sale.payChannel ? escapeHtml(PAY_CHANNELS[sale.payChannel]||sale.payChannel)+'-এ পরিশোধ' : 'নগদ পরিশোধ'}</td><td class="num">${fmt(cashPaidNow)}</td></tr>
         ${dueAdded>0?`<tr><td>এই বিক্রয়ে নতুন বাকি</td><td class="num">${fmt(dueAdded)}</td></tr>`:''}
         ${cust?`<tr><td><b>${(cust.due||0)<0?'অগ্রিম জমা (এখন)':'সর্বমোট বাকি (এখন)'}</b></td><td class="num"><b>${fmt(Math.abs(cust.due||0))}</b></td></tr>`:''}
         ${_receiptDueParts(cust).map(p=>`<tr><td style="font-size:0.85em;padding-left:10px;">• ${escapeHtml(p.label)}</td><td class="num" style="font-size:0.85em;">${fmt(p.amt)}</td></tr>`).join('')}
@@ -688,7 +731,7 @@ function buildReceiptText(sale, dateStr, cust){
   if(sale.discount>0) t += `ছাড়: -${fmt(sale.discount)}\n`;
   const cashPaidNow = (sale.cashPaidNow!==undefined) ? sale.cashPaidNow : sale.total;
   const dueAdded = sale.dueAdded || 0;
-  t += `সর্বমোট: ${fmt(sale.total)}\nনগদ পরিশোধ: ${fmt(cashPaidNow)}\n`;
+  t += `সর্বমোট: ${fmt(sale.total)}\n${sale.payChannel ? (PAY_CHANNELS[sale.payChannel]||sale.payChannel)+'-এ পরিশোধ' : 'নগদ পরিশোধ'}: ${fmt(cashPaidNow)}\n`;
   if(dueAdded>0) t += `এই বিক্রয়ে নতুন বাকি: ${fmt(dueAdded)}\n`;
   if(cust) t += ((cust.due||0)<0 ? `অগ্রিম জমা (এখন): ${fmt(-cust.due)}\n` : `সর্বমোট বাকি (এখন): ${fmt(cust.due||0)}\n`);
   { const _dp = _receiptDueParts(cust); if(_dp.length){ t += `  এর মধ্যে:\n`; _dp.forEach(p=>{ t += `  - ${p.label}: ${fmt(p.amt)}\n`; }); } }

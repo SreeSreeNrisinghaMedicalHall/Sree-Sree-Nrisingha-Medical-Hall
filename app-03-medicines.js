@@ -80,6 +80,7 @@ function openMedModal(id, prefillName){
   document.getElementById('mBuy').value = m ? m.buy : '';
   document.getElementById('mSell').value = m ? m.sell : '';
   document.getElementById('mBatch').value = m ? (m.batch||'') : '';
+  document.getElementById('mBarcode').value = m ? (m.barcode||'') : '';
   document.getElementById('mExpiry').value = m ? (m.expiry||'') : '';
   document.getElementById('mStock').value = m ? m.stock : 0;
   document.getElementById('mLowLimit').value = m ? m.lowLimit : 10;
@@ -141,6 +142,7 @@ function saveMedicine(){
     buy, sell, stock:parseInt(document.getElementById('mStock').value)||0,
     lowLimit:parseInt(document.getElementById('mLowLimit').value)||10,
     batch:document.getElementById('mBatch').value.trim(),
+    barcode:document.getElementById('mBarcode').value.trim(),
     expiry:document.getElementById('mExpiry').value,
     isAntibiotic:document.getElementById('mAntibiotic').checked,
     type,
@@ -148,6 +150,10 @@ function saveMedicine(){
     packDays: (type==='মলম'||type==='ক্রিম'||type==='শ্যাম্পু'||type==='এন্টিসেপটিক'||type==='ইনহেলার') ? (parseFloat(document.getElementById('mPackDays').value)||0) : 0,
     packCount: (type==='পাউডার/কৌটা') ? (parseFloat(document.getElementById('mPackCount').value)||0) : 0
   };
+  if(fields.barcode){
+    const other = medicines.find(x=>x.barcode===fields.barcode && x.id!==editingMedId);
+    if(other && !confirm('এই বারকোড ('+fields.barcode+') আগে থেকেই "'+other.name+'" ওষুধে আছে।\n\nতবুও এই ওষুধেও একই বারকোড বসাবেন? (স্ক্যানে প্রথমটাই আসবে)')) return;
+  }
   const id = editingMedId || uid();
   if(editingMedId){
     const idx = medicines.findIndex(x=>x.id===editingMedId);
