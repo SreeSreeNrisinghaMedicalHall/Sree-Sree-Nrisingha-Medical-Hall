@@ -429,9 +429,12 @@ async function shareOrderText(i){
 // ===== বিক্রেতা: এই ফোনে কে বিক্রি করছে =====
 // প্রতিটা ফোনে একবার নাম বসালে ওই ফোনের প্রতিটা বিক্রি, বাকি আদায়, খরচ ও পরিশোধে নামটা নিজে লেখা থাকে (ক্লাউডেও যায়)।
 // আলাদা PIN/লগইন লাগে না। নাম না বসালে আগের মতোই চলে, রেকর্ডে কিছু যোগ হয় না।
-function getDeviceSeller(){ try{ return (localStorage.getItem('ssn_device_seller')||'').trim(); }catch(e){ return ''; } }
+function getLoggedInStaffName(){ try{ const u = JSON.parse(sessionStorage.getItem('ssn_user')||'null'); return (u && u.name) ? String(u.name).trim() : ''; }catch(e){ return ''; } }
+function getDeviceSeller(){ const u = getLoggedInStaffName(); if(u) return u; try{ return (localStorage.getItem('ssn_device_seller')||'').trim(); }catch(e){ return ''; } }
 function sellerFields(){ const n = getDeviceSeller(); return n ? {seller:n} : {}; }
 function renderSellerBadge(){
+  { const el0 = document.getElementById('sellerBadge'), who = getLoggedInStaffName();
+    if(el0 && who){ el0.innerHTML = `👤 লগইন করা আছেন: <b>${escapeHtml(who)}</b> <span style="opacity:.7;">— প্রতিটা বিক্রিতে এই নাম লেখা হচ্ছে</span>`; return; } }
   const el = document.getElementById('sellerBadge'); if(!el) return;
   const n = getDeviceSeller();
   el.innerHTML = n
@@ -439,6 +442,7 @@ function renderSellerBadge(){
     : `👤 <b>বিক্রেতার নাম বসান</b> <span style="opacity:.7;">— প্রতিটা বিক্রিতে নাম লেখা থাকবে (এই ফোনে একবার)</span>`;
 }
 function editDeviceSeller(){
+  if(getLoggedInStaffName()){ toast('আপনি নিজের PIN দিয়ে লগইন করেছেন — নাম নিজে থেকেই বসছে'); return; }
   const cur = getDeviceSeller();
   const v = prompt('এই ফোনের বিক্রেতার নাম লিখুন (প্রতিটা বিক্রিতে এই নাম লেখা থাকবে)।\n\nনাম মুছে খালি রাখলে নাম লেখা বন্ধ হবে।', cur);
   if(v === null) return;

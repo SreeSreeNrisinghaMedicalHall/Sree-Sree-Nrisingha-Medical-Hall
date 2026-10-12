@@ -42,6 +42,9 @@ let activePinHash = localStorage.getItem('ssn_master_pin_hash_cache') || FALLBAC
 // role==='owner' — see requireOwnerRole() and applyRoleGating() below). null means no staff PIN
 // has been configured yet, so only the owner PIN works to unlock the app at all.
 let activeStaffPinHash = localStorage.getItem('ssn_staff_pin_hash_cache') || null;
+// নামসহ কর্মচারী: প্রত্যেকের নিজের PIN, নাম আর কোন ট্যাব খুলবে। মালিকের PIN আর আগের এক-PIN কর্মচারী ব্যবস্থা অবিকল আগের মতোই চলে —
+// তাই এই তালিকায় যা-ই হোক, মালিক সবসময় নিজের PIN দিয়ে ঢুকতে পারবেন।
+let activeStaffUsers = (()=>{ try{ const a = JSON.parse(localStorage.getItem('ssn_staff_users_cache')||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } })();
 function getDeviceToken(){
   let token = localStorage.getItem('ssn_device_token');
   if(!token){ token = uid(); localStorage.setItem('ssn_device_token', token); }
@@ -59,6 +62,7 @@ async function syncMasterPinHash(){
       activePinHash = data.masterPinHash;
       localStorage.setItem('ssn_master_pin_hash_cache', data.masterPinHash);
     }
+    if(data && Array.isArray(data.staffUsers)){ activeStaffUsers = data.staffUsers; try{ localStorage.setItem('ssn_staff_users_cache', JSON.stringify(data.staffUsers)); }catch(e){} }
     if(data && data.staffPinHash){
       activeStaffPinHash = data.staffPinHash;
       localStorage.setItem('ssn_staff_pin_hash_cache', data.staffPinHash);
@@ -129,6 +133,7 @@ function applyRoleGating(){
   const roleNote = document.getElementById('roleNoteText');
   if(secCard) secCard.style.display = isOwner ? 'block' : 'none';
   if(staffCard) staffCard.style.display = isOwner ? 'block' : 'none';
+  { const su = document.getElementById('staffUsersBtn'); if(su) su.style.display = isOwner ? 'block' : 'none'; }
   if(deviceCard) deviceCard.style.display = isOwner ? 'block' : 'none';
   if(roleNote) roleNote.style.display = isOwner ? 'none' : 'block';
   // Staff only need বিক্রয়/ক্রয়/কাস্টমার for day-to-day work (sales, purchase entries, customer
@@ -139,9 +144,10 @@ function applyRoleGating(){
   // itself isn't separately locked down the way PIN-change/device-management are.
   document.querySelectorAll('.nav-btn').forEach(b=>{
     const sec = b.dataset.sec;
-    b.style.display = (isOwner || STAFF_ALLOWED_SECTIONS.includes(sec)) ? '' : 'none';
+    b.style.display = (isOwner || staffAllowedSections().includes(sec)) ? '' : 'none';
   });
-  if(!isOwner && !STAFF_ALLOWED_SECTIONS.includes(currentSection)) showSection('sale');
+  if(!isOwner && !staffAllowedSections().includes(currentSection)) showSection('sale');
+  try{ renderSellerBadge(); }catch(e){}   // লগইন বদলালে বিক্রয় ট্যাবের নামের লাইনও বদলাবে
 }
 async function registerDevice(role){
   try{
@@ -303,7 +309,15 @@ async function submitLockPin(){
       return;
     }
     const hash = await sha256Hex(val);
-    const pickRole = h=> (h===activePinHash) ? 'owner' : ((activeStaffPinHash && h===activeStaffPinHash) ? 'staff' : null);
+    let loginUser = null;
+    const pickRole = h=>{
+      loginUser = null;
+      if(h===activePinHash) return 'owner';
+      if(activeStaffPinHash && h===activeStaffPinHash) return 'staff';
+      const u = activeStaffUsers.find(x=>x && x.pinHash===h);
+      if(u){ loginUser = u; return 'staff'; }
+      return null;
+    };
     let role = pickRole(hash);
     if(!role){
       // এই ফোনের PIN-কপি পুরনো হয়ে থাকতে পারে (PIN বদলানোর খবর ফোনে পৌঁছায় শুধু অ্যাপ নতুন করে খোলার সময়)।
@@ -319,6 +333,8 @@ async function submitLockPin(){
       resetFailedAttempts();
       sessionStorage.setItem('ssn_unlocked','1');
       sessionStorage.setItem('ssn_role', role);
+      if(loginUser) sessionStorage.setItem('ssn_user', JSON.stringify({id:loginUser.id, name:loginUser.name, sections:loginUser.sections||[]}));
+      else sessionStorage.removeItem('ssn_user');
       hideLockScreen();
       registerDevice(role);
       applyRoleGating();
@@ -375,6 +391,7 @@ async function submitLockPin(){
     localStorage.setItem('ssn_master_pin_hash_cache', hash);
     sessionStorage.setItem('ssn_unlocked','1');
     sessionStorage.setItem('ssn_role','owner');
+    sessionStorage.removeItem('ssn_user');
     hideLockScreen();
     document.getElementById('lockPinInput').placeholder = 'PIN';
     updateLockUI();
@@ -407,6 +424,7 @@ function openSetStaffPinFlow(){
 function doLogout(){
   sessionStorage.removeItem('ssn_unlocked');
   sessionStorage.removeItem('ssn_role');
+  sessionStorage.removeItem('ssn_user');
   showLockScreen('enter');
 }
 const SEC_Q1_HASH = 'c7fca9923b1324293ba0c1783cf14c7474340f18e54734ebdee04786048d50af';
@@ -525,4 +543,90 @@ window.addEventListener('online', ()=>{
 if ('serviceWorker' in navigator) {
   const _regSW = ()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); };
   if(document.readyState==='complete') _regSW(); else window.addEventListener('load', _regSW);
+}
+
+
+/* ---------------- নামসহ কর্মচারী (প্রত্যেকের নিজের PIN) — শুধু মালিক ম্যানেজ করেন ---------------- */
+// মালিকের PIN ও আগের এক-PIN "কর্মচারী PIN" অবিকল আগের মতো আছে। এই তালিকা তার ওপর বাড়তি: প্রত্যেকের নাম, নিজের PIN,
+// আর কোন ট্যাব খুলবে। লগইন করলে প্রতিটা বিক্রি/আদায়/খরচে ওই নাম নিজে বসে (আলাদা বিক্রেতার নাম লাগে না)।
+// মনে রাখবেন: এটা ভুল-বোঝাবুঝি ও হিসাব মেলানোর জন্য — হ্যাকার-রোধী নিরাপত্তা না (কোড ফাইলই ব্রাউজারে খোলা)।
+const SU_EXTRA_SECTIONS = [['medicines','ওষুধ'],['prescription','প্রেসক্রিপশন'],['test','টেস্ট']];
+async function _saveStaffUsers(list){
+  activeStaffUsers = list;
+  try{ localStorage.setItem('ssn_staff_users_cache', JSON.stringify(list)); }catch(e){}
+  let cloudOk = false;
+  try{
+    const shopCode = localStorage.getItem('ssn_shop_code');
+    const db = await initCloud();
+    if(db && shopCode){ await db.collection('pharmacies').doc(shopCode).set({staffUsers: list}, {merge:true}); cloudOk = true; }
+  }catch(e){ console.error('staffUsers save failed', e); }
+  toast(cloudOk ? '✓ কর্মচারীর তালিকা সংরক্ষণ হয়েছে — অন্য ফোনেও যাবে' : '⚠ এই ফোনে সংরক্ষিত হয়েছে, কিন্তু ক্লাউডে যায়নি — অন্য ফোনে এখনো কাজ নাও করতে পারে');
+  return cloudOk;
+}
+function _suSectionNames(u){
+  const names = ['বিক্রয়','ক্রয়','কাস্টমার'];
+  (u.sections||[]).forEach(s=>{ const f = SU_EXTRA_SECTIONS.find(x=>x[0]===s); if(f) names.push(f[1]); });
+  return names.join(', ');
+}
+function openStaffUsers(){
+  if(!requireOwnerRole('কর্মচারী যোগ/পরিবর্তন করা')) return;
+  const old = document.getElementById('staffUsersOv'); if(old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'staffUsersOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;overflow:auto;padding:14px;';
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:14px;max-width:520px;margin:16px auto;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;"><b style="font-size:17px;">👥 নামসহ কর্মচারী</b><button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById(\'staffUsersOv\').remove()">✕ বন্ধ</button></div>'
+    + '<div class="row-sub" style="margin:6px 0 10px;">প্রত্যেকের নিজের PIN। লগইন করলে প্রতিটা বিক্রিতে তার নাম নিজে লেখা হবে। হোম ও রিপোর্ট (লাভ-ক্ষতি) কর্মচারীরা কখনো দেখতে পাবে না।</div>'
+    + '<div id="suList"></div><div id="suForm"></div></div>';
+  document.body.appendChild(ov);
+  _suRenderList();
+}
+function _suRenderList(){
+  const box = document.getElementById('suList'); if(!box) return;
+  const rows = activeStaffUsers.map(u=>`<div class="row-item" style="flex-wrap:wrap;">
+      <div style="flex:1 1 55%;min-width:0;"><div class="row-title">${escapeHtml(u.name||'')}</div><div class="row-sub">খোলা ট্যাব: ${escapeHtml(_suSectionNames(u))}</div></div>
+      <div style="display:flex;gap:6px;"><button type="button" class="btn btn-sm btn-outline" onclick="_suShowForm('${u.id}')">✏️ সম্পাদনা</button><button type="button" class="btn btn-sm btn-outline" onclick="_suDelete('${u.id}')">🗑</button></div></div>`).join('');
+  box.innerHTML = (rows || '<div class="empty-state">এখনো কোনো নামসহ কর্মচারী নেই।</div>')
+    + '<button type="button" class="btn btn-primary btn-block" style="margin-top:10px;" onclick="_suShowForm(\'\')">+ নতুন কর্মচারী</button>';
+  const f = document.getElementById('suForm'); if(f) f.innerHTML = '';
+}
+function _suShowForm(id){
+  const u = id ? activeStaffUsers.find(x=>x.id===id) : null;
+  const secs = u ? (u.sections||[]) : [];
+  const checks = SU_EXTRA_SECTIONS.map(([k,l])=>`<label style="display:flex;align-items:center;gap:6px;margin:4px 0;"><input type="checkbox" class="suSec" value="${k}" ${secs.includes(k)?'checked':''}> ${l} ট্যাবও খুলুক</label>`).join('');
+  document.getElementById('suForm').innerHTML = `<div style="border:1px solid #cfe3d6;border-radius:12px;padding:10px;margin-top:10px;">
+    <b>${u?'সম্পাদনা: '+escapeHtml(u.name):'নতুন কর্মচারী'}</b>
+    <label style="margin-top:8px;">নাম *</label><input type="text" id="suName" maxlength="30" value="${u?escapeHtml(u.name):''}" placeholder="যেমন: তপন">
+    <label style="margin-top:8px;">${u?'নতুন PIN (খালি রাখলে আগের PIN-ই থাকবে)':'PIN * (অন্তত ৪ সংখ্যা)'}</label><input type="password" id="suPin" inputmode="numeric" maxlength="12" placeholder="${u?'বদলাতে চাইলে লিখুন':'যেমন: 4821'}">
+    <div class="row-sub" style="margin-top:8px;">সবসময় খোলা: বিক্রয়, ক্রয়, কাস্টমার</div>${checks}
+    <div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-primary" style="flex:1;" onclick="_suSave('${u?u.id:''}')">সংরক্ষণ করুন</button><button type="button" class="btn btn-outline" onclick="_suRenderList()">বাতিল</button></div></div>`;
+  document.getElementById('suName').focus();
+}
+async function _suSave(id){
+  if(!requireOwnerRole('কর্মচারী যোগ/পরিবর্তন করা')) return;
+  const name = (document.getElementById('suName').value||'').trim().slice(0,30);
+  const pin = (document.getElementById('suPin').value||'').trim();
+  const u = id ? activeStaffUsers.find(x=>x.id===id) : null;
+  if(!name){ toast('নাম দিন'); return; }
+  if(activeStaffUsers.some(x=>x.id!==id && (x.name||'').trim().toLowerCase()===name.toLowerCase())){ toast('এই নামে আগেই একজন আছেন'); return; }
+  let pinHash = u ? u.pinHash : null;
+  if(!u || pin){
+    if(pin.length < 4){ toast('PIN অন্তত ৪ সংখ্যার দিন'); return; }
+    const h = await sha256Hex(pin);
+    const clash = (h===activePinHash) || (activeStaffPinHash && h===activeStaffPinHash) || activeStaffUsers.some(x=>x.id!==id && x.pinHash===h);
+    if(clash){ toast('এই PIN আগে থেকেই কারও আছে — অন্য PIN দিন'); return; }
+    pinHash = h;
+  }
+  const sections = [...document.querySelectorAll('#suForm input.suSec:checked')].map(x=>x.value);
+  const rec = { id: u ? u.id : uid(), name, pinHash, sections };
+  const list = u ? activeStaffUsers.map(x=>x.id===u.id ? rec : x) : activeStaffUsers.concat([rec]);
+  await _saveStaffUsers(list);
+  _suRenderList();
+}
+async function _suDelete(id){
+  if(!requireOwnerRole('কর্মচারী মোছা')) return;
+  const u = activeStaffUsers.find(x=>x.id===id); if(!u) return;
+  if(!askDelete(`"${u.name}"-কে মুছে ফেলবেন?\n\nতার আগের বিক্রির হিসাবে নাম থেকে যাবে। শুধু নতুন করে লগইন করতে পারবেন না।`)) return;
+  await _saveStaffUsers(activeStaffUsers.filter(x=>x.id!==id));
+  _suRenderList();
 }

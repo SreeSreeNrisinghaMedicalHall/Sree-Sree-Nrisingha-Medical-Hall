@@ -10,10 +10,17 @@ const titles = {
   reports:['রিপোর্ট','ব্যবসার হিসাব দেখুন']
 };
 const STAFF_ALLOWED_SECTIONS = ['sale','purchase','customers'];
+// নামসহ কর্মচারী (নিজের PIN) লগইন করলে মালিকের দেওয়া অতিরিক্ত ট্যাবও খোলে — শুধু ওষুধ/প্রেসক্রিপশন/টেস্ট; হোম ও রিপোর্ট (লাভ-ক্ষতি) কখনো না
+function staffAllowedSections(){
+  try{ const u = JSON.parse(sessionStorage.getItem('ssn_user')||'null');
+    if(u && Array.isArray(u.sections)) return STAFF_ALLOWED_SECTIONS.concat(u.sections.filter(x=>['medicines','prescription','test'].includes(x)));
+  }catch(e){}
+  return STAFF_ALLOWED_SECTIONS;
+}
 function showSection(name){
   // Defense in depth: block even a direct/console-triggered call into an owner-only section
   // while logged in as staff, not just hide the nav button for it.
-  if(currentRole()==='staff' && !STAFF_ALLOWED_SECTIONS.includes(name)) name = 'sale';
+  if(currentRole()==='staff' && !staffAllowedSections().includes(name)) name = 'sale';
   currentSection = name;
   document.querySelectorAll('section').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+name).classList.add('active');
