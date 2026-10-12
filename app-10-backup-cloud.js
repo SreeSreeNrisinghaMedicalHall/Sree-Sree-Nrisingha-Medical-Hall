@@ -188,7 +188,17 @@ async function initCloud(){
     }
     const cfg = JSON.parse(cfgText);
     if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(cfg);
+    // ===== নিরাপত্তা লগইন (Firebase Authentication) =====
+    // এই ফোনে একবার লগইন করা হয়ে থাকলে (ssn_auth_on) লগইন ছাড়া ক্লাউডে কিছু পড়া/লেখা হয় না। লগইন না থাকলে
+    // অ্যাপ আগের মতোই ফোনে চলে (লোকাল-ফার্স্ট), শুধু ক্লাউড সিঙ্ক থেমে থাকে আর লগইন বক্স আসে — ডাটা কিছুই মোছে না।
+    // একবারও লগইন না করা ফোনে (ssn_auth_on নেই) আগের মতোই চলে, যাতে রুলস কড়া করার আগে কিছু ভাঙে না।
+    if(localStorage.getItem('ssn_auth_on')==='1'){
+      if(!firebase.auth) await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js');
+      const user = await new Promise(res=>{ const un = firebase.auth().onAuthStateChanged(u=>{ try{un();}catch(e){} res(u); }); });
+      if(!user){ if(navigator.onLine) showCloudLogin(); return null; }
+    }
     cloudDb = firebase.firestore();
+    _installBatchWrapper(cloudDb);
     // Lets Firestore itself cache data and QUEUE writes in IndexedDB so they survive the app
     // being closed/reopened while offline (spotty network), not just a brief mid-session drop.
     // Safe to ignore failure (e.g. multiple tabs open) — writes still queue in-memory for this
@@ -200,7 +210,8 @@ async function initCloud(){
 function shopColl(name){
   const shopCode = localStorage.getItem('ssn_shop_code');
   if(!cloudDb || !shopCode) return null;
-  return cloudDb.collection('pharmacies').doc(shopCode).collection(name);
+  const _c = cloudDb.collection('pharmacies').doc(shopCode).collection(name);
+  return name==='medicines' ? _wrapMedColl(_c) : _c;
 }
 // Whether a write can be handed to Firestore right now. Deliberately NOT the same as `cloudLive`
 // (which only means "the realtime listeners are currently attached" and flips false the instant
@@ -208,6 +219,88 @@ function shopColl(name){
 // exactly the offline-purchase-entry case above: Firestore's SDK queues it and sends it once the
 // network actually returns, so gating writes on cloudDb (not cloudLive) is what lets that happen.
 function cloudReady(){ return !!(cloudDb && localStorage.getItem('ssn_shop_code')); }
+
+/* ===== ক্রয়মূল্য (buy) আলাদা জায়গায়: pharmacies/{shop}/medicineCosts/{ওষুধের id} = {buy} (শুধু মালিক পড়তে পারে) =====
+   ওষুধের ডকুমেন্টে আর buy যায় না — নিচের র‍্যাপারগুলো সব লেখা (set/update/batch) থেকে buy কেটে medicineCosts-এ পাঠায়।
+   তাই বাকি কোডে কিছু বদলাতে হয়নি। ফোনে (লোকালি) med.buy আগের মতোই থাকে; শুধু ক্লাউডে ওষুধের তথ্য থেকে আলাদা থাকে। */
+let _costMap = {};   // id → ক্রয়মূল্য (এই সেশনের মেমোরিতে; মালিকের ফোনে)
+function _seedCostMap(force){
+  // force=true: ফোনের কপিই সত্য (মালিক নিজে এডিট করলে আগে ফোনে লেখা হয়) — ক্লাউড-লিসেনার পরে নতুন মান আনলে সেটাই জিতবে
+  try{ (load(DB_KEYS.med)||[]).forEach(m=>{ if(m && m.id && typeof m.buy==='number' && isFinite(m.buy) && (force || _costMap[m.id]===undefined)) _costMap[m.id] = m.buy; }); }catch(e){}
+}
+function _applyCostMap(arr){ (arr||[]).forEach(m=>{ if(m && m.id && _costMap[m.id]!==undefined) m.buy = _costMap[m.id]; }); }
+function _hasBuy(d){ return !!d && typeof d==='object' && !Array.isArray(d) && Object.prototype.hasOwnProperty.call(d,'buy'); }
+function _stripBuy(d){ if(!_hasBuy(d)) return d; const o = Object.assign({}, d); delete o.buy; return o; }
+function _costWrite(id, data){
+  try{
+    if(!_hasBuy(data)) return;
+    const v = data.buy;
+    if(typeof v!=='number' || !isFinite(v)) return;   // FieldValue ইত্যাদি বাদ
+    _costMap[id] = v;
+    const shop = localStorage.getItem('ssn_shop_code');
+    if(!cloudDb || !shop) return;
+    cloudDb.collection('pharmacies').doc(shop).collection('medicineCosts').doc(id).set({buy:v}, {merge:true}).catch(e=>console.warn('ক্রয়মূল্য ক্লাউডে যায়নি', id, e));
+  }catch(e){ console.warn('cost write error', e); }
+}
+function _wrapMedDoc(ref){
+  return new Proxy(ref, { get(t,k){
+    if(k==='__real') return t;
+    if(k==='set') return (data, opts)=>{
+      _costWrite(t.id, data);
+      const d = _stripBuy(data);
+      if(d!==data && !Object.keys(d).length) return Promise.resolve();
+      return opts ? t.set(d, opts) : t.set(d);
+    };
+    if(k==='update') return (...a)=>{
+      if(a.length===1 && _hasBuy(a[0])){
+        _costWrite(t.id, a[0]);
+        const d = _stripBuy(a[0]);
+        if(!Object.keys(d).length) return Promise.resolve();
+        return t.update(d);
+      }
+      return t.update(...a);
+    };
+    const v = t[k]; return typeof v==='function' ? v.bind(t) : v;
+  }});
+}
+function _wrapMedColl(c){
+  return new Proxy(c, { get(t,k){
+    if(k==='doc') return (...a)=>_wrapMedDoc(t.doc(...a));
+    const v = t[k]; return typeof v==='function' ? v.bind(t) : v;
+  }});
+}
+function _installBatchWrapper(db){
+  if(!db || db.__costWrapped) return;
+  db.__costWrapped = true;
+  const orig = db.batch.bind(db);
+  db.__origBatch = orig;   // মাইগ্রেশনে আসল (র‍্যাপারহীন) ব্যাচ লাগে
+  const un = r=>(r && r.__real) ? r.__real : r;
+  const isMed = r=>{ try{ return /\/medicines\/[^/]+$/.test(r.path); }catch(e){ return false; } };
+  db.batch = function(){
+    const b = orig(), costs = [];
+    const w = {
+      set(ref, data, opts){
+        const r = un(ref);
+        if(isMed(r) && _hasBuy(data)){ costs.push([r.id, data]); data = _stripBuy(data); }
+        if(opts) b.set(r, data, opts); else b.set(r, data);
+        return w;
+      },
+      update(ref, ...a){
+        const r = un(ref);
+        if(isMed(r) && a.length===1 && _hasBuy(a[0])){
+          costs.push([r.id, a[0]]);
+          const d = _stripBuy(a[0]);
+          if(Object.keys(d).length) b.update(r, d);
+          return w;
+        }
+        b.update(r, ...a); return w;
+      },
+      delete(ref){ b.delete(un(ref)); return w; },
+      commit(){ return b.commit().then(res=>{ costs.forEach(([id,d])=>_costWrite(id,d)); return res; }); }
+    };
+    return w;
+  };
+}
 const ARCHIVE_AGE_MS = 365*24*60*60*1000; // 1 year — records older than this are eligible to be archived out of local storage (see archiveOldRecords() below), so their real-time listener only tracks what's actually still meant to be local.
 const LIVE_COLLECTIONS = [
   {name:'medicines', arrKey:'medicines', dbKey:DB_KEYS.med},
@@ -402,6 +495,17 @@ async function attachRealtimeListeners(){
           });
         }catch(fieldGuardErr){ console.error('customer field-protect failed', fieldGuardErr); }
       }
+      if(c.name==='medicines' && currentRole()==='owner'){
+        // ক্লাউডের ওষুধ-ডকুমেন্টে এখন buy থাকে না — মালিকের ফোনে ক্রয়মূল্য মেমোরি/ফোনের কপি/medicineCosts থেকে ফিরিয়ে বসানো হয়,
+        // নইলে এই সিঙ্কেই ফোনের সব ক্রয়মূল্য মুছে যেত।
+        try{
+          const lb = {}; (load(c.dbKey)||[]).forEach(r=>{ if(r && r.id) lb[r.id] = r.buy; });
+          arr.forEach(r=>{
+            if(_costMap[r.id]!==undefined) r.buy = _costMap[r.id];
+            else if(r.buy===undefined && lb[r.id]!==undefined) r.buy = lb[r.id];
+          });
+        }catch(buyErr){ console.error('buy restore failed', buyErr); }
+      }
       setLiveArray(c.arrKey, arr);
       // Save the REAL data (with cost prices intact) first — stripCostPriceForStaff() must only
       // ever affect what's in memory for THIS session's screen, never what gets written to
@@ -415,9 +519,30 @@ async function attachRealtimeListeners(){
       if(c.name==='customers'||c.name==='sales'||c.name==='payments') scheduleDueReconcile(c.name);
       if(c.name==='medicines') stripCostPriceForStaff();
       scheduleRerender();
-    }, err=>{ console.error(err); });
+    }, err=>{
+      console.error(err);
+      if(err && err.code==='permission-denied'){
+        cloudLive = false;
+        try{ localStorage.setItem('ssn_last_sync_error', 'অনুমতি নেই (permission-denied) — এই ফোনে লগইন করা নেই বা লগইনের অনুমতি নেই। ফোনের ডাটা নিরাপদ আছে। 🔐 লগইন করুন।'); updateCloudStatus(); }catch(e2){}
+      }
+    });
     liveListeners.push(unsub);
   });
+  try{
+    _seedCostMap(true);
+    const cu = shopColl('medicineCosts').onSnapshot(snap=>{
+      let changed = false;
+      snap.docs.forEach(d=>{
+        const v = d.data().buy;
+        if(typeof v!=='number' || !isFinite(v)) return;
+        const w = _recentLocalWriteAt[d.id];
+        if(w && Date.now()-w < LOCAL_WRITE_GRACE_MS) return;
+        if(_costMap[d.id]!==v){ _costMap[d.id] = v; changed = true; }
+      });
+      if(changed && currentRole()==='owner'){ _applyCostMap(medicines); save(DB_KEYS.med, medicines, true); scheduleRerender(); }
+    }, ()=>{ /* কর্মচারীর লগইনে অনুমতি নেই — এটাই স্বাভাবিক, চুপচাপ থাকবে */ });
+    liveListeners.push(cu);
+  }catch(e){ console.warn('medicineCosts listener', e); }
   cloudLive = true;
   localStorage.setItem('ssn_last_sync', Date.now());
   localStorage.removeItem('ssn_last_sync_error');
@@ -561,7 +686,131 @@ function updateCloudStatus(){
   const codeDisplay = '•'.repeat(Math.min(shopCode.length,14));
   el.innerHTML = `<span class="badge badge-green">${cloudLive?'রিয়েল-টাইম সিঙ্ক চালু':'সংযুক্ত'} • কোড: <span style="letter-spacing:1px;">${codeDisplay}</span></span>` +
     (last ? `<div class="row-sub" style="margin-top:5px;">শেষ আপডেট: ${new Date(parseInt(last)).toLocaleString('bn-BD')}</div>` : `<div class="row-sub" style="margin-top:5px;">এখনো সিঙ্ক হয়নি</div>`) +
-    (err ? `<div class="row-sub" style="margin-top:6px;color:var(--red);background:var(--red-soft);padding:8px 10px;border-radius:8px;">এরর: ${err}</div>` : '');
+    (err ? `<div class="row-sub" style="margin-top:6px;color:var(--red);background:var(--red-soft);padding:8px 10px;border-radius:8px;">এরর: ${err}</div>` : '') +
+    cloudAuthStatusHtml() + costMigrationStatusHtml();
+}
+function cloudAuthStatusHtml(){
+  if(localStorage.getItem('ssn_auth_on')==='1'){
+    const em = escapeHtml(localStorage.getItem('ssn_auth_email')||'');
+    return `<div class="row-sub" style="margin-top:8px;">🔐 নিরাপদ লগইন চালু${em?' • '+em:''}</div>` +
+      `<button type="button" class="btn btn-sm btn-outline" style="margin-top:6px;" onclick="cloudLogout()">লগআউট (এই ফোন থেকে ক্লাউড-লগইন সরান)</button>`;
+  }
+  return `<div class="row-sub" style="margin-top:8px;color:#8a5a00;background:#fff4d6;padding:8px 10px;border-radius:8px;">🔓 এই ফোনে ক্লাউডের লগইন চালু নেই — শপ কোড জানলে যে কেউ ডাটাবেসে ঢুকতে পারে।</div>` +
+    `<button type="button" class="btn btn-sm btn-primary" style="margin-top:6px;" onclick="showCloudLogin()">🔐 নিরাপদ লগইন চালু করুন</button>`;
+}
+function costMigrationStatusHtml(){
+  try{
+    if(typeof currentRole==='function' && currentRole()!=='owner') return '';
+    if(localStorage.getItem('ssn_costs_migrated_v1')) return `<div class="row-sub" style="margin-top:8px;">🔒 ক্রয়মূল্য মালিক-only জায়গায় আছে ✓</div>`;
+    return `<div class="row-sub" style="margin-top:8px;line-height:1.5;">🔒 ক্রয়মূল্য এখনো ওষুধের তথ্যের সাথে ক্লাউডে আছে (কর্মচারীর লগইনে পড়া যায়)।</div>` +
+      `<button type="button" class="btn btn-sm btn-primary" style="margin-top:6px;" onclick="migrateCostsToOwnerOnly()">🔒 ক্রয়মূল্য আলাদা করুন (একবারের কাজ)</button>`;
+  }catch(e){ return ''; }
+}
+// একবারের কাজ (শুধু মালিক): ক্লাউডের সব ওষুধের ক্রয়মূল্য medicineCosts-এ কপি → মিলিয়ে দেখা → তারপরই ওষুধের ডকুমেন্ট থেকে buy সরানো।
+// কোনো ধাপে গোলমাল হলে থেমে যায়, ফোন ও ক্লাউডের মূল তথ্য অক্ষত থাকে। শুরুর আগে আলাদা দৈনিক ব্যাকআপও নেয়।
+async function migrateCostsToOwnerOnly(){
+  if(!requireOwnerRole('ক্রয়মূল্য আলাদা করা')) return;
+  if(!cloudReady() || !navigator.onLine){ toast('ইন্টারনেট ও ক্লাউড সংযোগ চালু থাকতে হবে'); return; }
+  if(!confirm('ক্রয়মূল্য আলাদা করবেন?\n\n⚠️ আগে মালিকের ফোন, কর্মচারীর ফোনসহ সব ফোনে নতুন সংস্করণ (v18) চালু করে নিন। পুরনো সংস্করণের ফোন এর পর ক্রয়মূল্য দেখতে পাবে না।\n\nএর আগে একটা ব্যাকআপ নেওয়া হবে, আর মিলিয়ে না দেখে কিছু সরানো হবে না।')) return;
+  try{
+    toast('ব্যাকআপ নেওয়া হচ্ছে…');
+    await autoDailyCloudBackup(true);
+    if(localStorage.getItem('ssn_last_auto_backup_date')!==todayStr() || localStorage.getItem('ssn_last_auto_backup_error')){ alert('⚠️ আগে ব্যাকআপ নেওয়া যায়নি — কাজ থামানো হলো। কিছুই বদলায়নি।'); return; }
+    const db = cloudDb, shop = localStorage.getItem('ssn_shop_code');
+    const base = db.collection('pharmacies').doc(shop);
+    toast('ক্রয়মূল্য কপি হচ্ছে…');
+    const medSnap = await base.collection('medicines').get({source:'server'});
+    const costs = {}, withBuy = [];
+    medSnap.docs.forEach(d=>{ const v = d.data().buy; if(v!==undefined) withBuy.push(d.id); if(typeof v==='number' && isFinite(v)) costs[d.id] = v; });
+    const costSnap = await base.collection('medicineCosts').get({source:'server'});
+    costSnap.docs.forEach(d=>{ const v = d.data().buy; if(typeof v==='number' && isFinite(v)) costs[d.id] = v; });   // নতুনটা (আলাদা জায়গার) জেতে
+    (load(DB_KEYS.med)||[]).forEach(m=>{ if(m && m.id && costs[m.id]===undefined && typeof m.buy==='number' && isFinite(m.buy)) costs[m.id] = m.buy; });   // ফাঁক ভরে ফোনের কপি
+    const ids = Object.keys(costs);
+    for(let i=0;i<ids.length;i+=400){
+      const b = db.__origBatch();
+      ids.slice(i,i+400).forEach(id=>b.set(base.collection('medicineCosts').doc(id), {buy:costs[id]}, {merge:true}));
+      await b.commit();
+    }
+    const chk = await base.collection('medicineCosts').get({source:'server'});
+    const have = new Set(chk.docs.map(d=>d.id));
+    const missing = ids.filter(id=>!have.has(id));
+    if(missing.length){ alert('⚠️ '+missing.length+'টা ক্রয়মূল্য আলাদা জায়গায় পৌঁছায়নি — কাজ থামানো হলো। ওষুধের তথ্যে কিছুই সরানো হয়নি।'); return; }
+    toast('ওষুধের তথ্য থেকে ক্রয়মূল্য সরানো হচ্ছে…');
+    for(let i=0;i<withBuy.length;i+=400){
+      const b = db.__origBatch();
+      withBuy.slice(i,i+400).forEach(id=>b.update(base.collection('medicines').doc(id), {buy: firebase.firestore.FieldValue.delete()}));
+      await b.commit();
+    }
+    Object.keys(costs).forEach(id=>{ _costMap[id] = costs[id]; });
+    localStorage.setItem('ssn_costs_migrated_v1', String(Date.now()));
+    updateCloudStatus();
+    alert('✓ হয়েছে: '+ids.length+'টা ওষুধের ক্রয়মূল্য মালিক-only জায়গায় গেছে।\nএবার নতুন Firestore রুলস বসানো যাবে (SECURITY-SETUP.txt-এর ধাপ ৭)।');
+  }catch(e){
+    console.error(e);
+    alert('⚠️ মাঝপথে থেমে গেছে: '+(e&&e.message?e.message:e)+'\n\nফোন ও ক্লাউডের তথ্য অক্ষত আছে। ইন্টারনেট ঠিক করে আবার চাপুন — আবার চালালে ক্ষতি নেই।');
+  }
+}
+/* ---------------- Cloud লগইন (Firebase Authentication) ---------------- */
+// মালিক নিজের ফোনে মালিকের অ্যাকাউন্ট, কর্মচারীর ফোনে কর্মচারীর অ্যাকাউন্ট দিয়ে একবার লগইন করবেন। পাসওয়ার্ড ফোনে সেভ হয় না —
+// Firebase নিজেই লগইন-সেশন ধরে রাখে। অ্যাকাউন্ট বানানো ও Firestore রুলস বসানোর ধাপ SECURITY-SETUP.txt-এ আছে।
+function showCloudLogin(){
+  if(!localStorage.getItem('ssn_cloud_config')){ toast('আগে ☁ ক্লাউড সংযোগ করুন'); return; }
+  if(document.getElementById('cloudLoginOv')) return;
+  const ov = document.createElement('div');
+  ov.id = 'cloudLoginOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;overflow:auto;padding:14px;';
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:16px;max-width:420px;margin:40px auto;">'
+    + '<b style="font-size:17px;">🔐 ক্লাউড লগইন</b>'
+    + '<div class="row-sub" style="margin:6px 0 10px;line-height:1.6;">মালিকের ফোনে মালিকের ইমেইল, কর্মচারীর ফোনে কর্মচারীর ইমেইল দিন। একবার লগইন করলে আর বারবার লাগবে না। লগইন না করলে অ্যাপ ফোনে আগের মতোই চলবে, শুধু ক্লাউড সিঙ্ক বন্ধ থাকবে।</div>'
+    + '<label>ইমেইল</label><input type="email" id="clEmail" autocomplete="username" autocapitalize="none" style="width:100%;">'
+    + '<label>পাসওয়ার্ড</label><input type="password" id="clPass" autocomplete="current-password" style="width:100%;">'
+    + '<div id="clMsg" class="row-sub" style="margin-top:8px;color:var(--red);min-height:18px;"></div>'
+    + '<button type="button" class="btn btn-primary btn-block" id="clGo" style="margin-top:8px;">লগইন করুন</button>'
+    + '<button type="button" class="btn btn-outline btn-block" id="clLater" style="margin-top:8px;">এখন না</button></div>';
+  document.body.appendChild(ov);
+  const close = ()=>{ try{ ov.remove(); }catch(e){} };
+  ov.querySelector('#clLater').onclick = close;
+  ov.querySelector('#clGo').onclick = async ()=>{
+    const email = ov.querySelector('#clEmail').value.trim();
+    const pass = ov.querySelector('#clPass').value;
+    const msg = ov.querySelector('#clMsg');
+    if(!email || !pass){ msg.textContent = 'ইমেইল ও পাসওয়ার্ড দুটোই দিন'; return; }
+    if(!navigator.onLine){ msg.textContent = 'লগইনের জন্য ইন্টারনেট লাগবে'; return; }
+    msg.style.color = 'var(--text-soft,#555)'; msg.textContent = 'লগইন হচ্ছে…';
+    try{
+      if(!window.firebase){
+        await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
+      }
+      if(!firebase.auth) await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js');
+      if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(JSON.parse(localStorage.getItem('ssn_cloud_config')));
+      await firebase.auth().signInWithEmailAndPassword(email, pass);
+      localStorage.setItem('ssn_auth_on','1');
+      localStorage.setItem('ssn_auth_email', email);
+      localStorage.removeItem('ssn_last_sync_error');
+      msg.style.color = 'var(--green,#1b7a3a)'; msg.textContent = '✓ লগইন সফল — অ্যাপ নতুন করে খুলছে…';
+      // Firestore-কে লগইনসহ নতুনভাবে শুরু করার সবচেয়ে নিরাপদ উপায়: পাতাটা একবার রিলোড
+      setTimeout(()=>location.reload(), 700);
+    }catch(e){
+      console.error(e);
+      const c = e && e.code || '';
+      msg.style.color = 'var(--red)';
+      msg.textContent = (c.includes('wrong-password')||c.includes('invalid-credential')||c.includes('user-not-found')) ? 'ইমেইল বা পাসওয়ার্ড ভুল'
+        : c.includes('too-many-requests') ? 'অনেকবার ভুল হয়েছে — একটু পরে আবার চেষ্টা করুন'
+        : c.includes('network') ? 'ইন্টারনেট সমস্যা — আবার চেষ্টা করুন'
+        : c.includes('operation-not-allowed') ? 'Firebase-এ Email/Password লগইন চালু করা নেই (SECURITY-SETUP.txt দেখুন)'
+        : 'লগইন হয়নি: ' + (e && e.message ? e.message : c);
+    }
+  };
+}
+async function cloudLogout(){
+  if(!confirm('এই ফোন থেকে ক্লাউড-লগইন সরাবেন? ফোনের ডাটা মুছবে না, কিন্তু আবার লগইন না করা পর্যন্ত ক্লাউড সিঙ্ক বন্ধ থাকবে।')) return;
+  try{ if(window.firebase && firebase.auth) await firebase.auth().signOut(); }catch(e){ console.error(e); }
+  try{ localStorage.removeItem('ssn_auth_email'); }catch(e){}
+  // ssn_auth_on ইচ্ছে করেই রাখা হলো — যাতে লগআউট অবস্থায় ক্লাউড খোলা না থাকে
+  cloudDb = null; cloudLive = false;
+  try{ liveListeners.forEach(u=>u()); }catch(e){} liveListeners = [];
+  updateCloudStatus();
+  toast('লগআউট হয়েছে');
 }
 // ===== ব্যাকআপ পাঠানোর রিমাইন্ডার: ৭ দিনের বেশি নিজের Drive/WhatsApp-এ ব্যাকআপ না পাঠালে মনে করায় =====
 const BACKUP_REMIND_DAYS = 7;

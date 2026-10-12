@@ -114,6 +114,13 @@ async function refreshMedicinesFromCloud(){
     if(!coll) return;
     const snap = await coll.get();
     const arr = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    if(currentRole()==='owner'){
+      // ওষুধের ডকুমেন্টে এখন buy নেই — আলাদা medicineCosts থেকে (না পেলে ফোনের কপি থেকে) ফিরিয়ে বসাই
+      try{ const cs = await shopColl('medicineCosts').get(); cs.docs.forEach(d=>{ const v = d.data().buy; if(typeof v==='number' && isFinite(v)) _costMap[d.id] = v; }); }catch(e){ console.warn('costs refresh', e); }
+      _seedCostMap();
+      const lb = {}; (load(DB_KEYS.med)||[]).forEach(r=>{ if(r && r.id) lb[r.id] = r.buy; });
+      arr.forEach(r=>{ if(_costMap[r.id]!==undefined) r.buy = _costMap[r.id]; else if(r.buy===undefined && lb[r.id]!==undefined) r.buy = lb[r.id]; });
+    }
     setLiveArray('medicines', arr);
     save(DB_KEYS.med, arr);
     rerenderCurrentSection();
