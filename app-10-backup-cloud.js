@@ -197,6 +197,7 @@ async function initCloud(){
       const user = await new Promise(res=>{ const un = firebase.auth().onAuthStateChanged(u=>{ try{un();}catch(e){} res(u); }); });
       if(!user){ if(navigator.onLine) showCloudLogin(); return null; }
     }
+    try{ if(firebase.auth && !window._ssnAuthWatch){ window._ssnAuthWatch = true; firebase.auth().onAuthStateChanged(()=>{ try{ updateCloudStatus(); }catch(e){} }); } }catch(e){}
     cloudDb = firebase.firestore();
     _installBatchWrapper(cloudDb);
     // Lets Firestore itself cache data and QUEUE writes in IndexedDB so they survive the app
@@ -698,9 +699,17 @@ function cloudAuthStatusHtml(){
   return `<div class="row-sub" style="margin-top:8px;color:#8a5a00;background:#fff4d6;padding:8px 10px;border-radius:8px;">🔓 এই ফোনে ক্লাউডের লগইন চালু নেই — শপ কোড জানলে যে কেউ ডাটাবেসে ঢুকতে পারে।</div>` +
     `<button type="button" class="btn btn-sm btn-primary" style="margin-top:6px;" onclick="showCloudLogin()">🔐 নিরাপদ লগইন চালু করুন</button>`;
 }
+// মালিকের Firebase অ্যাকাউন্টের UID (firestore.rules-এর owner() ফাংশনের UID-এর সাথে একই হতে হবে)।
+// "ক্রয়মূল্য আলাদা করুন" বাটন শুধু তখনই দেখাবে যখন এই ফোনে ক্লাউডে মালিকের অ্যাকাউন্টে লগইন করা আছে —
+// PIN-এর ভূমিকা (role) বা ফোনের নিজস্ব চিহ্ন দেখে নয়। তাই কর্মচারীর অ্যাকাউন্টে লগইন করা ফোনে এটা কখনো আসবে না।
+const OWNER_CLOUD_UID = 'OWoSdlC71Eco4iY7Sn7esH7UCxf2';
+function isCloudOwner(){
+  try{ return !!(window.firebase && firebase.auth && firebase.auth().currentUser && firebase.auth().currentUser.uid === OWNER_CLOUD_UID); }catch(e){ return false; }
+}
 function costMigrationStatusHtml(){
   try{
-    if(typeof currentRole==='function' && currentRole()!=='owner') return '';
+    if(sessionStorage.getItem('ssn_role')!=='owner') return '';   // PIN দেওয়ার আগে/কর্মচারী হিসেবে ঢুকলে কিছুই নয়
+    if(!isCloudOwner()) return '';                                // কর্মচারীর ক্লাউড-লগইন বা লগইন না থাকলে কিছুই নয়
     if(localStorage.getItem('ssn_costs_migrated_v1')) return `<div class="row-sub" style="margin-top:8px;">🔒 ক্রয়মূল্য মালিক-only জায়গায় আছে ✓</div>`;
     return `<div class="row-sub" style="margin-top:8px;line-height:1.5;">🔒 ক্রয়মূল্য এখনো ওষুধের তথ্যের সাথে ক্লাউডে আছে (কর্মচারীর লগইনে পড়া যায়)।</div>` +
       `<button type="button" class="btn btn-sm btn-primary" style="margin-top:6px;" onclick="migrateCostsToOwnerOnly()">🔒 ক্রয়মূল্য আলাদা করুন (একবারের কাজ)</button>`;
@@ -710,6 +719,7 @@ function costMigrationStatusHtml(){
 // কোনো ধাপে গোলমাল হলে থেমে যায়, ফোন ও ক্লাউডের মূল তথ্য অক্ষত থাকে। শুরুর আগে আলাদা দৈনিক ব্যাকআপও নেয়।
 async function migrateCostsToOwnerOnly(){
   if(!requireOwnerRole('ক্রয়মূল্য আলাদা করা')) return;
+  if(!isCloudOwner()){ toast('শুধু মালিকের ক্লাউড-অ্যাকাউন্টে লগইন করা ফোনে এটা চলবে'); return; }
   if(!cloudReady() || !navigator.onLine){ toast('ইন্টারনেট ও ক্লাউড সংযোগ চালু থাকতে হবে'); return; }
   if(!confirm('ক্রয়মূল্য আলাদা করবেন?\n\n⚠️ আগে মালিকের ফোন, কর্মচারীর ফোনসহ সব ফোনে নতুন সংস্করণ (v18) চালু করে নিন। পুরনো সংস্করণের ফোন এর পর ক্রয়মূল্য দেখতে পাবে না।\n\nএর আগে একটা ব্যাকআপ নেওয়া হবে, আর মিলিয়ে না দেখে কিছু সরানো হবে না।')) return;
   try{
@@ -743,6 +753,7 @@ async function migrateCostsToOwnerOnly(){
     }
     Object.keys(costs).forEach(id=>{ _costMap[id] = costs[id]; });
     localStorage.setItem('ssn_costs_migrated_v1', String(Date.now()));
+    try{ await base.set({costsSeparatedAt: Date.now()}, {merge:true}); }catch(e){ console.warn('marker', e); }   // অন্য ফোনেও যেন "হয়ে গেছে" দেখায়
     updateCloudStatus();
     alert('✓ হয়েছে: '+ids.length+'টা ওষুধের ক্রয়মূল্য মালিক-only জায়গায় গেছে।\nএবার নতুন Firestore রুলস বসানো যাবে (SECURITY-SETUP.txt-এর ধাপ ৭)।');
   }catch(e){

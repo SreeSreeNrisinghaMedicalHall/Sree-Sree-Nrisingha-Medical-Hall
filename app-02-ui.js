@@ -12,8 +12,14 @@ const titles = {
 const STAFF_ALLOWED_SECTIONS = ['sale','purchase','customers'];
 // নামসহ কর্মচারী (নিজের PIN) লগইন করলে মালিকের দেওয়া অতিরিক্ত ট্যাবও খোলে — শুধু ওষুধ/প্রেসক্রিপশন/টেস্ট; হোম ও রিপোর্ট (লাভ-ক্ষতি) কখনো না
 function staffAllowedSections(){
+  // বিক্রয় সবসময় খোলা। নামসহ কর্মচারীর (v:2) ক্ষেত্রে ক্রয়/কাস্টমার/ওষুধ/প্রেসক্রিপশন/টেস্ট — মালিক যেটা টিক দিয়েছেন শুধু সেটাই।
+  // পুরনো রেকর্ড (v নেই) আগের মতোই ক্রয় ও কাস্টমার খোলা পায়, তাই আপডেটে কারও ট্যাব বন্ধ হয়ে যায় না। হোম ও রিপোর্ট কর্মচারী কখনো পায় না।
   try{ const u = JSON.parse(sessionStorage.getItem('ssn_user')||'null');
-    if(u && Array.isArray(u.sections)) return STAFF_ALLOWED_SECTIONS.concat(u.sections.filter(x=>['medicines','prescription','test'].includes(x)));
+    if(u && Array.isArray(u.sections)){
+      const optional = ['purchase','customers','medicines','prescription','test'];
+      if(u.v===2) return ['sale'].concat(u.sections.filter(x=>optional.includes(x)));
+      return STAFF_ALLOWED_SECTIONS.concat(u.sections.filter(x=>['medicines','prescription','test'].includes(x)));
+    }
   }catch(e){}
   return STAFF_ALLOWED_SECTIONS;
 }

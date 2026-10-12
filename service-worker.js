@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nrisingha-medical-v18';
+const CACHE_NAME = 'nrisingha-medical-v20';
 const ASSETS = [
   './',
   './index.html',

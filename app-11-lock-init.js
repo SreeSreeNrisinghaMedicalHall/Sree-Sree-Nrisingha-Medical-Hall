@@ -62,6 +62,7 @@ async function syncMasterPinHash(){
       activePinHash = data.masterPinHash;
       localStorage.setItem('ssn_master_pin_hash_cache', data.masterPinHash);
     }
+    if(data && data.costsSeparatedAt){ localStorage.setItem('ssn_costs_migrated_v1', String(data.costsSeparatedAt)); }
     if(data && Array.isArray(data.staffUsers)){ activeStaffUsers = data.staffUsers; try{ localStorage.setItem('ssn_staff_users_cache', JSON.stringify(data.staffUsers)); }catch(e){} }
     if(data && data.staffPinHash){
       activeStaffPinHash = data.staffPinHash;
@@ -340,11 +341,12 @@ async function submitLockPin(){
       resetFailedAttempts();
       sessionStorage.setItem('ssn_unlocked','1');
       sessionStorage.setItem('ssn_role', role);
-      if(loginUser) sessionStorage.setItem('ssn_user', JSON.stringify({id:loginUser.id, name:loginUser.name, sections:loginUser.sections||[]}));
+      if(loginUser) sessionStorage.setItem('ssn_user', JSON.stringify({id:loginUser.id, name:loginUser.name, sections:loginUser.sections||[], v:loginUser.v||1}));
       else sessionStorage.removeItem('ssn_user');
       hideLockScreen();
       registerDevice(role);
       applyRoleGating();
+      try{ updateCloudStatus(); }catch(e){}
       if(role==='staff') stripCostPriceForStaff();
       else refreshMedicinesFromCloud(); // undo any stripping a prior staff session in this same tab may have left behind
     } else {
@@ -557,7 +559,9 @@ if ('serviceWorker' in navigator) {
 // মালিকের PIN ও আগের এক-PIN "কর্মচারী PIN" অবিকল আগের মতো আছে। এই তালিকা তার ওপর বাড়তি: প্রত্যেকের নাম, নিজের PIN,
 // আর কোন ট্যাব খুলবে। লগইন করলে প্রতিটা বিক্রি/আদায়/খরচে ওই নাম নিজে বসে (আলাদা বিক্রেতার নাম লাগে না)।
 // মনে রাখবেন: এটা ভুল-বোঝাবুঝি ও হিসাব মেলানোর জন্য — হ্যাকার-রোধী নিরাপত্তা না (কোড ফাইলই ব্রাউজারে খোলা)।
-const SU_EXTRA_SECTIONS = [['medicines','ওষুধ'],['prescription','প্রেসক্রিপশন'],['test','টেস্ট']];
+const SU_EXTRA_SECTIONS = [['purchase','ক্রয়'],['customers','কাস্টমার'],['medicines','ওষুধ'],['prescription','প্রেসক্রিপশন'],['test','টেস্ট']];
+// পুরনো রেকর্ডে (v নেই) ক্রয় ও কাস্টমার সবসময় খোলা ছিল — তাই দেখানোর সময় সেগুলো টিক ধরা হয়
+function _suEffectiveSections(u){ if(!u) return ['purchase','customers']; const s = u.sections||[]; return u.v===2 ? s : ['purchase','customers'].concat(s); }
 async function _saveStaffUsers(list){
   activeStaffUsers = list;
   try{ localStorage.setItem('ssn_staff_users_cache', JSON.stringify(list)); }catch(e){}
@@ -571,8 +575,8 @@ async function _saveStaffUsers(list){
   return cloudOk;
 }
 function _suSectionNames(u){
-  const names = ['বিক্রয়','ক্রয়','কাস্টমার'];
-  (u.sections||[]).forEach(s=>{ const f = SU_EXTRA_SECTIONS.find(x=>x[0]===s); if(f) names.push(f[1]); });
+  const names = ['বিক্রয়'];
+  _suEffectiveSections(u).forEach(s=>{ const f = SU_EXTRA_SECTIONS.find(x=>x[0]===s); if(f) names.push(f[1]); });
   return names.join(', ');
 }
 function openStaffUsers(){
@@ -599,13 +603,13 @@ function _suRenderList(){
 }
 function _suShowForm(id){
   const u = id ? activeStaffUsers.find(x=>x.id===id) : null;
-  const secs = u ? (u.sections||[]) : [];
-  const checks = SU_EXTRA_SECTIONS.map(([k,l])=>`<label style="display:flex;align-items:center;gap:6px;margin:4px 0;"><input type="checkbox" class="suSec" value="${k}" ${secs.includes(k)?'checked':''}> ${l} ট্যাবও খুলুক</label>`).join('');
+  const secs = _suEffectiveSections(u);
+  const checks = SU_EXTRA_SECTIONS.map(([k,l])=>`<label style="display:flex;align-items:center;gap:6px;margin:4px 0;"><input type="checkbox" class="suSec" value="${k}" ${secs.includes(k)?'checked':''}> ${l} ট্যাব খুলুক</label>`).join('');
   document.getElementById('suForm').innerHTML = `<div style="border:1px solid #cfe3d6;border-radius:12px;padding:10px;margin-top:10px;">
     <b>${u?'সম্পাদনা: '+escapeHtml(u.name):'নতুন কর্মচারী'}</b>
     <label style="margin-top:8px;">নাম *</label><input type="text" id="suName" maxlength="30" value="${u?escapeHtml(u.name):''}" placeholder="যেমন: তপন">
     <label style="margin-top:8px;">${u?'নতুন PIN (খালি রাখলে আগের PIN-ই থাকবে)':'PIN * (অন্তত ৪ সংখ্যা)'}</label><input type="password" id="suPin" inputmode="numeric" maxlength="12" placeholder="${u?'বদলাতে চাইলে লিখুন':'যেমন: 4821'}">
-    <div class="row-sub" style="margin-top:8px;">সবসময় খোলা: বিক্রয়, ক্রয়, কাস্টমার</div>${checks}
+    <div class="row-sub" style="margin-top:8px;">সবসময় খোলা: বিক্রয়। টিক তুলে দিলে ওই ট্যাব এই কর্মচারীর ফোনে বন্ধ হয়ে যাবে (পরের বার লগইন থেকে)।</div>${checks}
     <div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-primary" style="flex:1;" onclick="_suSave('${u?u.id:''}')">সংরক্ষণ করুন</button><button type="button" class="btn btn-outline" onclick="_suRenderList()">বাতিল</button></div></div>`;
   document.getElementById('suName').focus();
 }
@@ -625,7 +629,7 @@ async function _suSave(id){
     pinHash = h;
   }
   const sections = [...document.querySelectorAll('#suForm input.suSec:checked')].map(x=>x.value);
-  const rec = { id: u ? u.id : uid(), name, pinHash, sections };
+  const rec = { id: u ? u.id : uid(), name, pinHash, sections, v:2 };
   const list = u ? activeStaffUsers.map(x=>x.id===u.id ? rec : x) : activeStaffUsers.concat([rec]);
   await _saveStaffUsers(list);
   _suRenderList();
