@@ -11,7 +11,7 @@ let pinTarget = 'owner'; // which PIN setup-step1/step2 is currently setting: 'o
 // keeps working with whatever PIN it last knew — that's an inherent limit of a file with no
 // server, not something any client-side code can close; the device list below is the tool for
 // cutting off a specific device you no longer trust, on top of changing the PIN itself.
-const FALLBACK_PIN_HASH = 'dac2ed050cedfd17beebe4d055e2d6c4c8c9476b42494130e318e166091617dc'; // মালিকের নিজের বানানো "প্রথম দরজা" সংখ্যার হ্যাশ (আগে ছিল 0000) — নতুন ফোনে ক্লাউডে যুক্ত হওয়ার আগে শুধু এটাই চলে
+const FALLBACK_PIN_HASH = '370f6f4b5624c261599ed159d899725df3b36b54abf5aa88476f261fa0cc1017'; // মালিকের নিজের বানানো "প্রথম দরজা" সংখ্যার হ্যাশ (আগে ছিল 0000) — নতুন ফোনে ক্লাউডে যুক্ত হওয়ার আগে শুধু এটাই চলে
 // Brute-force lockout: a stolen phone can be tried against the PIN screen indefinitely with
 // nothing else stopping it, so after MAX_PIN_ATTEMPTS wrong PINs in a row (tracked in
 // localStorage, so closing/reopening the tab does NOT reset the count — sessionStorage would
