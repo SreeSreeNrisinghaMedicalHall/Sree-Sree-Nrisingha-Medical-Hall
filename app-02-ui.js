@@ -17,17 +17,24 @@ function staffAllowedSections(){
   try{ const u = JSON.parse(sessionStorage.getItem('ssn_user')||'null');
     if(u && Array.isArray(u.sections)){
       const optional = ['purchase','customers','medicines','prescription','test'];
-      if(u.v===2) return ['sale'].concat(u.sections.filter(x=>optional.includes(x)));
-      return STAFF_ALLOWED_SECTIONS.concat(u.sections.filter(x=>['medicines','prescription','test'].includes(x)));
+      let base;
+      if(u.v===2) base = ['sale'].concat(u.sections.filter(x=>optional.includes(x)));
+      else base = STAFF_ALLOWED_SECTIONS.concat(u.sections.filter(x=>['medicines','prescription','test'].includes(x)));
+      // মালিক "বিক্রয় ট্যাব খুলুক" টিক তুলে দিলে (noSale) শুধু বিক্রয় বাদ যায়। পুরনো রেকর্ডে noSale নেই, তাই কারও বিক্রয় হঠাৎ বন্ধ হয় না।
+      if(u.noSale===true){ base = base.filter(x=>x!=='sale'); if(!base.length) base = ['sale']; }
+      return base;
     }
   }catch(e){}
   return STAFF_ALLOWED_SECTIONS;
 }
+// বিক্রয় বন্ধ থাকলে কর্মচারী ঢুকে যে ট্যাবে নামবে (খোলা ট্যাবগুলোর প্রথমটা)
+function staffHomeSection(){ const a = staffAllowedSections(); return a.includes('sale') ? 'sale' : (a[0] || 'sale'); }
 function showSection(name){
   // Defense in depth: block even a direct/console-triggered call into an owner-only section
   // while logged in as staff, not just hide the nav button for it.
-  if(currentRole()==='staff' && !staffAllowedSections().includes(name)) name = 'sale';
+  if(currentRole()==='staff' && !staffAllowedSections().includes(name)) name = staffHomeSection();
   currentSection = name;
+  try{ ensureLazyForSection(name); }catch(e){}
   document.querySelectorAll('section').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+name).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.sec===name));

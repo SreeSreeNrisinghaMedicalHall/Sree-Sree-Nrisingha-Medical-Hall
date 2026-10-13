@@ -303,6 +303,23 @@ function _installBatchWrapper(db){
     return w;
   };
 }
+// ফায়ারবেসের পড়ার সীমা বাঁচাতে: কম-ব্যবহারের কালেকশন (lazy:'skip' = প্রেসক্রিপশন/রেফারার/টেস্ট-দাম+ল্যাব সামগ্রী) অ্যাপ খোলার সময় ক্লাউড থেকে পড়া হয় না —
+// ওই ট্যাব খুললে ensureLazyCollections() পুরোটা পড়ে। ল্যাব টেস্ট (lazy:'full') অ্যাপ খুললে শুধু গত ৩০ দিনেরটা পড়ে, টেস্ট/রিপোর্ট ট্যাবে ঢুকলে পুরোটা।
+// ফোনে আগের কপি থাকেই (local-first), তাই ডাটা হারানোর ঝুঁকি নেই — শুধু অন্য ফোনের নতুন এন্ট্রি ওই ট্যাব খোলার আগে দেখা যায় না।
+let _attachOneFn = null, _lazyOn = {}, _liveByName = {};
+const LAZY_SECTION_MAP = { test:['labTests','referrers','testPrices'], prescription:['prescriptions'], reports:['labTests'] };
+function ensureLazyCollections(names){
+  try{
+    if(!_attachOneFn || !cloudLive) return;
+    (names||[]).forEach(n=>{
+      if(_lazyOn[n]) return;
+      const c = LIVE_COLLECTIONS.find(x=>x.name===n); if(!c || !c.lazy) return;
+      _lazyOn[n] = true;
+      _attachOneFn(c, true);
+    });
+  }catch(e){ console.error('lazy attach failed', e); }
+}
+function ensureLazyForSection(sec){ if(LAZY_SECTION_MAP[sec]) ensureLazyCollections(LAZY_SECTION_MAP[sec]); }
 const ARCHIVE_AGE_MS = 365*24*60*60*1000; // 1 year — records older than this are eligible to be archived out of local storage (see archiveOldRecords() below), so their real-time listener only tracks what's actually still meant to be local.
 const LIVE_COLLECTIONS = [
   {name:'medicines', arrKey:'medicines', dbKey:DB_KEYS.med},
@@ -311,10 +328,10 @@ const LIVE_COLLECTIONS = [
   {name:'customers', arrKey:'customers', dbKey:DB_KEYS.customer},
   {name:'suppliers', arrKey:'suppliers', dbKey:DB_KEYS.supplier},
   {name:'payments', arrKey:'payments', dbKey:DB_KEYS.payment},
-  {name:'labTests', arrKey:'labTests', dbKey:DB_KEYS.labTest},
-  {name:'prescriptions', arrKey:'prescriptions', dbKey:DB_KEYS.prescription},
-  {name:'referrers', arrKey:'referrers', dbKey:DB_KEYS.referrer},
-  {name:'testPrices', arrKey:'testPrices', dbKey:DB_KEYS.testPrice}
+  {name:'labTests', arrKey:'labTests', dbKey:DB_KEYS.labTest, recentOnlyField:'ts', recentMs:30*24*60*60*1000, lazy:'full'},
+  {name:'prescriptions', arrKey:'prescriptions', dbKey:DB_KEYS.prescription, lazy:'skip'},
+  {name:'referrers', arrKey:'referrers', dbKey:DB_KEYS.referrer, lazy:'skip'},
+  {name:'testPrices', arrKey:'testPrices', dbKey:DB_KEYS.testPrice, lazy:'skip'}
 ];
 function setLiveArray(key, arr){
   switch(key){
@@ -471,8 +488,9 @@ async function attachRealtimeListeners(){
   if(!db || !shopCode) return;
   liveListeners.forEach(unsub=>unsub());
   liveListeners = [];
+  _lazyOn = {}; _liveByName = {};
   await migrateLegacyIfNeeded(db, shopCode);
-  LIVE_COLLECTIONS.forEach(c=>{
+  const attachOne = (c, full)=>{
     // sales/purchases only listen for records newer than the archive cutoff — otherwise this
     // listener would re-fetch the FULL cloud collection (including anything archiveOldRecords()
     // just removed locally) on every single change anywhere in the shop, from any device, and
@@ -480,7 +498,8 @@ async function attachRealtimeListeners(){
     // treating the "missing" old records as a stale write to recover from. Anything genuinely
     // still local-only and un-archived (not in this filtered query, not tombstoned) is still
     // preserved by that same merge-back logic — it's just no longer redundantly re-fetched.
-    const query = c.recentOnlyField ? shopColl(c.name).where(c.recentOnlyField, '>', Date.now()-ARCHIVE_AGE_MS) : shopColl(c.name);
+    const query = (c.recentOnlyField && !full) ? shopColl(c.name).where(c.recentOnlyField, '>', Date.now()-(c.recentMs||ARCHIVE_AGE_MS)) : shopColl(c.name);
+    if(_liveByName[c.name]){ try{ _liveByName[c.name](); }catch(e){} }
     const unsub = query.onSnapshot(snapshot=>{
       const arr = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
       if(c.name==='customers'){
@@ -532,8 +551,11 @@ async function attachRealtimeListeners(){
         try{ localStorage.setItem('ssn_last_sync_error', 'অনুমতি নেই (permission-denied) — এই ফোনে লগইন করা নেই বা লগইনের অনুমতি নেই। ফোনের ডাটা নিরাপদ আছে। 🔐 লগইন করুন।'); updateCloudStatus(); }catch(e2){}
       }
     });
+    _liveByName[c.name] = unsub;
     liveListeners.push(unsub);
-  });
+  };
+  _attachOneFn = attachOne;
+  LIVE_COLLECTIONS.forEach(c=>{ if(c.lazy==='skip') return; attachOne(c, false); });
   try{
     _seedCostMap(true);
     const cu = shopColl('medicineCosts').onSnapshot(snap=>{
@@ -555,6 +577,7 @@ async function attachRealtimeListeners(){
   updateCloudStatus();
   setTimeout(()=>autoDailyCloudBackup(false), 25000);
   try{ attachPhotoListener(); }catch(e){ console.error(e); }
+  try{ ensureLazyForSection(currentSection); }catch(e){ console.error(e); }
 }
 // ===== স্বয়ংক্রিয় দৈনিক ক্লাউড ব্যাকআপ (আলাদা তারিখওয়ালা কপি, ১৪ দিন রাখা হয়) =====
 // রিয়েল-টাইম সিঙ্ক ক্লাউডে "একটাই বর্তমান অবস্থা" রাখে — তাই কোনো ভুল/নষ্ট ডাটা সিঙ্ক হয়ে গেলে ক্লাউডেও সেটাই থাকে।

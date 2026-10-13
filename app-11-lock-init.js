@@ -181,7 +181,7 @@ function applyRoleGating(){
     const sec = b.dataset.sec;
     b.style.display = (isOwner || staffAllowedSections().includes(sec)) ? '' : 'none';
   });
-  if(!isOwner && !staffAllowedSections().includes(currentSection)) showSection('sale');
+  if(!isOwner && !staffAllowedSections().includes(currentSection)) showSection(staffHomeSection());
   try{ renderSellerBadge(); }catch(e){}   // লগইন বদলালে বিক্রয় ট্যাবের নামের লাইনও বদলাবে
 }
 async function registerDevice(role){
@@ -368,7 +368,7 @@ async function submitLockPin(){
       resetFailedAttempts();
       sessionStorage.setItem('ssn_unlocked','1');
       sessionStorage.setItem('ssn_role', role);
-      if(loginUser) sessionStorage.setItem('ssn_user', JSON.stringify({id:loginUser.id, name:loginUser.name, sections:loginUser.sections||[], v:loginUser.v||1}));
+      if(loginUser) sessionStorage.setItem('ssn_user', JSON.stringify({id:loginUser.id, name:loginUser.name, sections:loginUser.sections||[], v:loginUser.v||1, noSale:loginUser.noSale===true}));
       else sessionStorage.removeItem('ssn_user');
       hideLockScreen();
       registerDevice(role);
@@ -614,7 +614,7 @@ async function _saveStaffUsers(list){
   return cloudOk;
 }
 function _suSectionNames(u){
-  const names = ['বিক্রয়'];
+  const names = (u && u.noSale===true) ? [] : ['বিক্রয়'];
   _suEffectiveSections(u).forEach(s=>{ const f = SU_EXTRA_SECTIONS.find(x=>x[0]===s); if(f) names.push(f[1]); });
   return names.join(', ');
 }
@@ -643,12 +643,13 @@ function _suRenderList(){
 function _suShowForm(id){
   const u = id ? activeStaffUsers.find(x=>x.id===id) : null;
   const secs = _suEffectiveSections(u);
-  const checks = SU_EXTRA_SECTIONS.map(([k,l])=>`<label style="display:flex;align-items:center;gap:6px;margin:4px 0;"><input type="checkbox" class="suSec" value="${k}" ${secs.includes(k)?'checked':''}> ${l} ট্যাব খুলুক</label>`).join('');
+  const saleChk = `<label style="display:flex;align-items:center;gap:6px;margin:4px 0;"><input type="checkbox" id="suSaleChk" ${(u && u.noSale===true)?'':'checked'}> বিক্রয় ট্যাব খুলুক</label>`;
+  const checks = saleChk + SU_EXTRA_SECTIONS.map(([k,l])=>`<label style="display:flex;align-items:center;gap:6px;margin:4px 0;"><input type="checkbox" class="suSec" value="${k}" ${secs.includes(k)?'checked':''}> ${l} ট্যাব খুলুক</label>`).join('');
   document.getElementById('suForm').innerHTML = `<div style="border:1px solid #cfe3d6;border-radius:12px;padding:10px;margin-top:10px;">
     <b>${u?'সম্পাদনা: '+escapeHtml(u.name):'নতুন কর্মচারী'}</b>
     <label style="margin-top:8px;">নাম *</label><input type="text" id="suName" maxlength="30" value="${u?escapeHtml(u.name):''}" placeholder="যেমন: তপন">
     <label style="margin-top:8px;">${u?'নতুন PIN (খালি রাখলে আগের PIN-ই থাকবে)':'PIN * (অন্তত ৪ সংখ্যা)'}</label><input type="password" id="suPin" inputmode="numeric" maxlength="12" placeholder="${u?'বদলাতে চাইলে লিখুন':'যেমন: 4821'}">
-    <div class="row-sub" style="margin-top:8px;">সবসময় খোলা: বিক্রয়। টিক তুলে দিলে ওই ট্যাব এই কর্মচারীর ফোনে বন্ধ হয়ে যাবে (পরের বার লগইন থেকে)।</div>${checks}
+    <div class="row-sub" style="margin-top:8px;">টিক তুলে দিলে ওই ট্যাব এই কর্মচারীর ফোনে বন্ধ হয়ে যাবে (পরের বার লগইন থেকে)। যেমন ল্যাবের কর্মচারীর জন্য শুধু «টেস্ট» রেখে বাকি সব বন্ধ করা যায়। অন্তত একটা ট্যাব খোলা রাখতে হবে।</div>${checks}
     <div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-primary" style="flex:1;" onclick="_suSave('${u?u.id:''}')">সংরক্ষণ করুন</button><button type="button" class="btn btn-outline" onclick="_suRenderList()">বাতিল</button></div></div>`;
   document.getElementById('suName').focus();
 }
@@ -668,7 +669,10 @@ async function _suSave(id){
     pinHash = h;
   }
   const sections = [...document.querySelectorAll('#suForm input.suSec:checked')].map(x=>x.value);
+  const saleOn = !!(document.getElementById('suSaleChk') && document.getElementById('suSaleChk').checked);
+  if(!saleOn && !sections.length){ toast('অন্তত একটা ট্যাব খোলা রাখুন'); return; }
   const rec = { id: u ? u.id : uid(), name, pinHash, sections, v:2 };
+  if(!saleOn) rec.noSale = true;
   const list = u ? activeStaffUsers.map(x=>x.id===u.id ? rec : x) : activeStaffUsers.concat([rec]);
   await _saveStaffUsers(list);
   _suRenderList();

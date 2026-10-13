@@ -50,15 +50,17 @@ function widalReportRowHtml(i,t){
 // pricing just come back as {price:0, cost:0, profit:0}, which keeps them invisible to the
 // dashboard/report totals below).
 function labTestTotals(rec){
-  let rawPrice = 0, cost = 0;
+  let rawPrice = 0, cost = 0, supPrice = 0, supCost = 0;
   (rec.tests||[]).forEach(t=>{ rawPrice += (t.price||0); cost += (t.cost||0); });
+  // বিলে যোগ করা ল্যাব সামগ্রী (নিডেল/টিউব): রোগীর বিলে যোগ হয় আর খরচও ধরা হয়, তবে ডাক্তারের ছাড়/কমিশন শুধু টেস্টের ওপর।
+  (rec.supplies||[]).forEach(s=>{ const q = s.qty||0; supPrice += (s.price||0)*q; supCost += (s.cost||0)*q; });
   // ডাক্তার প্রেসক্রিপশনে "X% less" লিখে দিলে রোগীর বিল থেকে সেই টাকাটা বাদ যায়, আর ঠিক ততটাই
   // ডাক্তারের কমিশন থেকে কাটা হয় (commissionAmount ইতিমধ্যে discountAmount বাদ দিয়েই বসানো —
   // saveLabTest দ্রষ্টব্য) — ফলে দোকান-মালিকের লাভ discount দেওয়ার আগে-পরে একই থাকে।
   const discount = rec.discountAmount || 0;
-  const price = Math.max(0, rawPrice - discount);
+  const price = Math.max(0, rawPrice - discount) + supPrice;
   const commission = rec.commissionAmount || 0;
-  return { price, rawPrice, cost, discount, profit: price - cost - commission };
+  return { price, rawPrice: rawPrice + supPrice, cost: cost + supCost, discount, profit: price - (cost + supCost) - commission, suppliesPrice: supPrice };
 }
 // Records saved before this feature existed have no paidAmount field at all — those are
 // treated as fully paid (their receipt was always the full price), so due stays ০ for them
@@ -69,12 +71,16 @@ function labTestDue(rec){
   return Math.max(price - paid, 0);
 }
 /* ---- টেস্ট মূল্য তালিকা (per-test default price/cost, like the ওষুধ inventory) ---- */
-function findTestPrice(name){ return testPrices.find(p=>p.name===name); }
+// ল্যাব সামগ্রী (নিডেল/টিউব ইত্যাদি) একই testPrices কালেকশনে kind:'supply' চিহ্ন দিয়ে থাকে — তাই ব্যাকআপ/ক্লাউড/রুলস সব আগের মতোই কাজ করে।
+// টেস্টের নাম-তালিকা ও দামের হিসাব থেকে এগুলো সবসময় বাদ থাকে।
+function isLabSupply(p){ return !!p && p.kind==='supply'; }
+function labSupplyList(){ return testPrices.filter(isLabSupply).sort((a,b)=>(a.name||'').localeCompare(b.name||'')); }
+function findTestPrice(name){ return testPrices.find(p=>!isLabSupply(p) && p.name===name); }
 // The dropdown in the টেস্ট রিপোর্ট form isn't limited to the ~16 built-in TEST_NAMES anymore —
 // any test added here (via "+ নতুন টেস্ট যোগ করুন") shows up there too, right alongside them.
 function getAllTestNames(){
   const base = TEST_NAMES.filter(n=>n!=='Other (Custom)');
-  const extra = testPrices.map(p=>p.name).filter(n=>n && !base.includes(n));
+  const extra = testPrices.filter(p=>!isLabSupply(p)).map(p=>p.name).filter(n=>n && !base.includes(n));
   return [...base, ...extra, 'Other (Custom)'];
 }
 function applyTestPriceDefaults(row){
@@ -145,7 +151,7 @@ function deleteCustomTest(name){
   if(!requireOwnerRole('টেস্ট মুছে ফেলা')) return;
   if(!confirm(`"${name}" টেস্টটা তালিকা থেকে মুছে ফেলতে চান?`)) return;
   const p = findTestPrice(name);
-  testPrices = testPrices.filter(x=>x.name!==name);
+  testPrices = testPrices.filter(x=>isLabSupply(x) || x.name!==name);
   save(DB_KEYS.testPrice, testPrices);
   if(cloudLive && p) shopColl('testPrices').doc(p.id).delete().catch(e=>console.error(e));
   toast('টেস্টটা মুছে ফেলা হয়েছে');
@@ -374,6 +380,8 @@ function openTestModal(id){
       })
     : [applyTestPriceDefaults({name:'Blood Grouping', customName:'', result:'', price:'', cost:''})];
   renderTestRows();
+  _labSupplyRows = rec && rec.supplies ? rec.supplies.map(s=>({sid:s.sid, name:s.name, qty:s.qty, price:s.price, cost:s.cost})) : [];
+  renderLabSupplyRows();
   _testReferrerType = rec ? (rec.referrerType||'self') : 'self';
   _testReferrerId = rec ? (rec.referrerId||null) : null;
   _testDiscountPercent = rec && rec.discountPercent ? rec.discountPercent : '';
@@ -396,6 +404,10 @@ function saveLabTest(){
   })).filter(t=>t.name && (t.result || t.price>0));
   if(!tests.length){ toast('অন্তত একটা টেস্টের ফলাফল বা মূল্য দিন'); return; }
   const existing = editingLabTestId ? labTests.find(t=>t.id===editingLabTestId) : null;
+  // এডিট হলে আগের বিলের সামগ্রী স্টকে ফিরিয়ে দিয়ে নতুনটা নতুন করে কাটা হয় — যাতে দুবার কাটা না পড়ে।
+  if(existing && existing.supplies && existing.supplies.length) _adjustSupplyStock(existing.supplies, +1);
+  const supplies = _labSupplyRows.map(r=>{ const p = testPrices.find(x=>x.id===r.sid); return { sid:r.sid, name:(p?p.name:r.name)||'', qty:parseFloat(r.qty)||0, price:parseFloat(r.price)||0, cost:p?(p.cost||0):(r.cost||0) }; }).filter(s=>s.sid && s.qty>0);
+  const suppliesTotal = supplies.reduce((a,s)=>a+s.price*s.qty,0);
   // Undo the OLD commission first (if this is an edit and it previously had one) so editing
   // never double-counts — the new commission below is computed fresh from this save's totals.
   if(existing && existing.referrerId && existing.commissionAmount){
@@ -427,7 +439,7 @@ function saveLabTest(){
       if(cloudReady()) shopColl('referrers').doc(ref.id).set({due:ref.due}, {merge:true}).catch(e=>console.error(e));
     }
   }
-  const totalPrice = Math.max(0, rawTotal - discountAmount);
+  const totalPrice = Math.max(0, rawTotal - discountAmount) + suppliesTotal;
   const paidRaw = document.getElementById('tPaidAmount').value;
   // Blank field = fully paid (keeps old behaviour for anyone who ignores this field). A typed
   // value, even ০, is taken literally so a real partial/no payment can be recorded.
@@ -438,6 +450,7 @@ function saveLabTest(){
     patientGender: document.getElementById('tPatientGender').value,
     patientMobile: document.getElementById('tPatientMobile').value.trim(),
     tests,
+    supplies,
     notes: document.getElementById('tNotes').value.trim(),
     paidAmount,
     referrerId, referrerName, referrerType, referrerPercent, discountPercent, discountAmount, commissionAmount
@@ -450,6 +463,7 @@ function saveLabTest(){
     rec = { id: uid(), ts: Date.now(), date: todayStr(), ...fields };
     labTests.unshift(rec);
   }
+  _adjustSupplyStock(supplies, -1);
   save(DB_KEYS.labTest, labTests);
   if(cloudReady()){
     shopColl('labTests').doc(rec.id).set(rec).catch(e=>console.error(e));
@@ -472,7 +486,8 @@ function showLabTestReceipt(rec){
   const testTotals = labTestTotals(rec);
   // The বিল is a cash memo — money only, no result column, even if some rows have a result
   // typed in already (that belongs on the রেজাল্ট রিপোর্ট instead).
-  const testRowsHtml = (rec.tests||[]).map((t,i)=>`<tr><td class="num">${i+1}.</td><td>${escapeHtml(t.name)}</td><td class="num">${fmt(t.price||0)}</td></tr>`).join('');
+  const supplyRowsHtml = (rec.supplies||[]).map((s,i)=>`<tr><td class="num">${(rec.tests||[]).length+i+1}.</td><td>${escapeHtml(s.name)}${(s.qty||0)!==1?' × '+s.qty:''}</td><td class="num">${fmt((s.price||0)*(s.qty||0))}</td></tr>`).join('');
+  const testRowsHtml = (rec.tests||[]).map((t,i)=>`<tr><td class="num">${i+1}.</td><td>${escapeHtml(t.name)}</td><td class="num">${fmt(t.price||0)}</td></tr>`).join('') + supplyRowsHtml;
   document.getElementById('labTestReceiptContent').innerHTML = `
     <div class="receipt">
       <div class="r-head">
@@ -700,4 +715,140 @@ function saveTestPayment(){
   closeModal('testPaymentModalBackdrop');
   toast(`${fmt(Math.min(amount,due))} জমা নেওয়া হয়েছে ✓`);
   renderLabTestList();
+}
+
+
+/* ================= ল্যাব সামগ্রী (নিডেল, টিউব, গ্লাভস ইত্যাদি) =================
+   ওষুধ ইনভেন্টরি থেকে সম্পূর্ণ আলাদা: ওষুধের তালিকা/স্টক-সতর্কতা/POS-এ এগুলো আসে না। টেস্ট বিলে যোগ করলে স্টক কমে।
+   ক্রয়মূল্য শুধু মালিক দেখেন ও বদলাতে পারেন। */
+let _labSupplyRows = [];
+function _saveSupplyDoc(p){
+  save(DB_KEYS.testPrice, testPrices);
+  if(cloudReady()){ const {id:pid, ...fields} = p; shopColl('testPrices').doc(pid).set(fields, {merge:true}).catch(e=>console.error(e)); }
+}
+// sign: -1 = বিলে ব্যবহার (স্টক কমে), +1 = ফেরত (এডিটের আগে)
+function _adjustSupplyStock(list, sign){
+  (list||[]).forEach(s=>{
+    const p = testPrices.find(x=>x.id===s.sid && isLabSupply(x));
+    if(!p) return;
+    p.stock = (p.stock||0) + sign*(s.qty||0);
+    _saveSupplyDoc(p);
+  });
+}
+function addLabSupplyRow(){
+  const list = labSupplyList();
+  if(!list.length){ toast('আগে "🧰 ল্যাব সামগ্রী" থেকে নিডেল/টিউব ইত্যাদির তালিকা বানান'); return; }
+  const p = list[0];
+  _labSupplyRows.push({sid:p.id, name:p.name, qty:1, price:p.price||0, cost:p.cost||0});
+  renderLabSupplyRows();
+}
+function removeLabSupplyRow(i){ _labSupplyRows.splice(i,1); renderLabSupplyRows(); }
+function onLabSupplyPick(i, sid){
+  const p = testPrices.find(x=>x.id===sid); if(!p) return;
+  _labSupplyRows[i] = {sid:p.id, name:p.name, qty:_labSupplyRows[i].qty||1, price:p.price||0, cost:p.cost||0};
+  renderLabSupplyRows();
+}
+function renderLabSupplyRows(){
+  const wrap = document.getElementById('labSupplyWrap'); if(!wrap) return;
+  const list = labSupplyList();
+  const rows = _labSupplyRows.map((r,i)=>{
+    const opts = list.map(p=>`<option value="${p.id}" ${p.id===r.sid?'selected':''}>${escapeHtml(p.name)} (স্টক ${p.stock||0})</option>`).join('');
+    return `<div style="border:1px dashed var(--border);border-radius:10px;padding:8px;margin-top:6px;">
+      <div style="display:flex;gap:8px;align-items:center;"><select onchange="onLabSupplyPick(${i}, this.value)" style="flex:1;">${opts}</select><span onclick="removeLabSupplyRow(${i})" style="color:var(--red,#c0392b);font-size:20px;cursor:pointer;flex-shrink:0;">×</span></div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <input type="number" min="0" step="any" placeholder="পরিমাণ" value="${r.qty}" oninput="_labSupplyRows[${i}].qty=this.value" style="flex:1;">
+        <input type="number" min="0" step="any" placeholder="একক দাম ৳" value="${r.price}" oninput="_labSupplyRows[${i}].price=this.value" style="flex:1;">
+      </div></div>`;
+  }).join('');
+  wrap.innerHTML = `<div class="row-sub" style="margin-top:10px;font-weight:700;">🧰 ল্যাব সামগ্রী (নিডেল/টিউব ইত্যাদি — ঐচ্ছিক)</div>${rows}
+    <button type="button" class="btn btn-outline btn-block" style="margin-top:6px;" onclick="addLabSupplyRow()">+ সামগ্রী যোগ করুন</button>`;
+}
+
+function openLabSupplies(){
+  const old = document.getElementById('labSuppliesOv'); if(old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'labSuppliesOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;overflow:auto;padding:14px;';
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:14px;max-width:520px;margin:16px auto;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;"><b style="font-size:17px;">🧰 ল্যাব সামগ্রী</b><button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById(\'labSuppliesOv\').remove()">✕ বন্ধ</button></div>'
+    + '<div class="row-sub" style="margin:6px 0 10px;">নিডেল, টিউব, গ্লাভস ইত্যাদি। এগুলো ওষুধ ইনভেন্টরি থেকে আলাদা — টেস্ট বিলে যোগ করলে এখানকার স্টক কমে।</div>'
+    + '<div id="lsList"></div><div id="lsForm"></div></div>';
+  document.body.appendChild(ov);
+  _lsRenderList();
+}
+function _lsRenderList(){
+  const box = document.getElementById('lsList'); if(!box) return;
+  const owner = currentRole()==='owner';
+  const rows = labSupplyList().map(p=>{
+    const st = p.stock||0;
+    return `<div class="row-item" style="flex-wrap:wrap;">
+      <div style="flex:1 1 50%;min-width:0;"><div class="row-title">${escapeHtml(p.name)}</div>
+        <div class="row-sub">বিক্রয় ৳${p.price||0}${owner?' • ক্রয় ৳'+(p.cost||0):''} • <span style="${st<=0?'color:#c0392b;font-weight:700;':''}">স্টক ${st}</span></div></div>
+      <div style="display:flex;gap:6px;"><button type="button" class="btn btn-sm btn-outline" onclick="_lsShowBuy('${p.id}')">+ ক্রয়</button><button type="button" class="btn btn-sm btn-outline" onclick="_lsShowForm('${p.id}')">✏️</button>${owner?`<button type="button" class="btn btn-sm btn-outline" onclick="_lsDelete('${p.id}')">🗑</button>`:''}</div></div>`;
+  }).join('');
+  box.innerHTML = (rows || '<div class="empty-state">এখনো কোনো ল্যাব সামগ্রী নেই।</div>')
+    + '<button type="button" class="btn btn-primary btn-block" style="margin-top:10px;" onclick="_lsShowForm(\'\')">+ নতুন সামগ্রী</button>';
+  const f = document.getElementById('lsForm'); if(f) f.innerHTML = '';
+}
+function _lsShowForm(id){
+  const p = id ? testPrices.find(x=>x.id===id && isLabSupply(x)) : null;
+  const owner = currentRole()==='owner';
+  document.getElementById('lsForm').innerHTML = `<div style="border:1px solid #cfe3d6;border-radius:12px;padding:10px;margin-top:10px;">
+    <b>${p?'সম্পাদনা: '+escapeHtml(p.name):'নতুন সামগ্রী'}</b>
+    <label style="margin-top:8px;">নাম *</label><input type="text" id="lsName" maxlength="40" value="${p?escapeHtml(p.name):''}" placeholder="যেমন: ব্লাড কালেকশন নিডেল">
+    <label style="margin-top:8px;">রোগীর কাছে বিক্রয় দাম (প্রতি একক) ৳</label><input type="number" id="lsPrice" min="0" step="any" value="${p?(p.price||''):''}">
+    ${owner?`<label style="margin-top:8px;">ক্রয়মূল্য (প্রতি একক) ৳ — শুধু মালিক দেখেন</label><input type="number" id="lsCost" min="0" step="any" value="${p?(p.cost||''):''}">`:''}
+    ${p?'':`<label style="margin-top:8px;">এখন স্টকে কতটা আছে</label><input type="number" id="lsStock" min="0" step="any" placeholder="যেমন: 50">`}
+    <div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-primary" style="flex:1;" onclick="_lsSave('${p?p.id:''}')">সংরক্ষণ করুন</button><button type="button" class="btn btn-outline" onclick="_lsRenderList()">বাতিল</button></div></div>`;
+  document.getElementById('lsName').focus();
+}
+function _lsSave(id){
+  const name = (document.getElementById('lsName').value||'').trim().slice(0,40);
+  if(!name){ toast('নাম দিন'); return; }
+  const owner = currentRole()==='owner';
+  const price = parseFloat(document.getElementById('lsPrice').value)||0;
+  const costEl = document.getElementById('lsCost');
+  if(labSupplyList().some(x=>x.id!==id && (x.name||'').trim().toLowerCase()===name.toLowerCase())){ toast('এই নামে আগেই একটা সামগ্রী আছে'); return; }
+  let p = id ? testPrices.find(x=>x.id===id && isLabSupply(x)) : null;
+  if(p){ p.name = name; p.price = price; if(owner && costEl) p.cost = parseFloat(costEl.value)||0; }
+  else {
+    const st = parseFloat((document.getElementById('lsStock')||{}).value)||0;
+    p = { id:uid(), name, kind:'supply', price, cost: (owner && costEl) ? (parseFloat(costEl.value)||0) : 0, stock: st };
+    testPrices.push(p);
+  }
+  _saveSupplyDoc(p);
+  toast('✓ সংরক্ষণ হয়েছে');
+  _lsRenderList(); renderLabSupplyRows();
+}
+function _lsShowBuy(id){
+  const p = testPrices.find(x=>x.id===id && isLabSupply(x)); if(!p) return;
+  const owner = currentRole()==='owner';
+  document.getElementById('lsForm').innerHTML = `<div style="border:1px solid #cfe3d6;border-radius:12px;padding:10px;margin-top:10px;">
+    <b>ক্রয়: ${escapeHtml(p.name)}</b> <span class="row-sub">(বর্তমান স্টক ${p.stock||0})</span>
+    <label style="margin-top:8px;">কতটা কিনলেন *</label><input type="number" id="lsBuyQty" min="0" step="any">
+    ${owner?`<label style="margin-top:8px;">ক্রয়মূল্য (প্রতি একক) ৳</label><input type="number" id="lsBuyCost" min="0" step="any" value="${p.cost||''}">`:''}
+    <div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-primary" style="flex:1;" onclick="_lsBuySave('${p.id}')">স্টকে যোগ করুন</button><button type="button" class="btn btn-outline" onclick="_lsRenderList()">বাতিল</button></div></div>`;
+  document.getElementById('lsBuyQty').focus();
+}
+function _lsBuySave(id){
+  const p = testPrices.find(x=>x.id===id && isLabSupply(x)); if(!p) return;
+  const qty = parseFloat(document.getElementById('lsBuyQty').value)||0;
+  if(qty<=0){ toast('পরিমাণ দিন'); return; }
+  const costEl = document.getElementById('lsBuyCost');
+  const cost = costEl ? (parseFloat(costEl.value)||0) : (p.cost||0);
+  p.stock = (p.stock||0) + qty;
+  if(costEl) p.cost = cost;
+  p.buys = (p.buys||[]).concat([{ ts:Date.now(), date:todayStr(), qty, cost }]).slice(-20);
+  _saveSupplyDoc(p);
+  toast('✓ স্টকে যোগ হয়েছে');
+  _lsRenderList(); renderLabSupplyRows();
+}
+function _lsDelete(id){
+  if(!requireOwnerRole('ল্যাব সামগ্রী মোছা')) return;
+  const p = testPrices.find(x=>x.id===id && isLabSupply(x)); if(!p) return;
+  if(!askDelete(`"${p.name}" মুছে ফেলবেন?\n\nআগের বিলে নাম ও দাম থেকে যাবে।`)) return;
+  testPrices = testPrices.filter(x=>x.id!==id);
+  save(DB_KEYS.testPrice, testPrices);
+  if(cloudLive) shopColl('testPrices').doc(id).delete().catch(e=>console.error(e));
+  _lsRenderList(); renderLabSupplyRows();
 }
