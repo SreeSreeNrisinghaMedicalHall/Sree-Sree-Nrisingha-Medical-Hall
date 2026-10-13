@@ -261,11 +261,11 @@
 
     <!-- LAB TEST REPORTS -->
     <section id="sec-test">
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" style="flex:1;" onclick="openTestModal()">+ নতুন টেস্ট রিপোর্ট</button>
-        <button class="btn btn-outline" style="flex-shrink:0;" onclick="openReferrerListModal()">👤 রেফারার</button>
-        <button class="btn btn-outline" style="flex-shrink:0;" onclick="openTestPriceListModal()">৳ মূল্য তালিকা</button>
-        <button class="btn btn-outline" style="flex-shrink:0;" onclick="openLabSupplies()">🧰 ল্যাব সামগ্রী</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" style="flex:1 1 100%;" onclick="openTestModal()">+ নতুন টেস্ট রিপোর্ট</button>
+        <button class="btn btn-outline" style="flex:1 1 0;white-space:nowrap;padding-left:6px;padding-right:6px;" onclick="openReferrerListModal()">👤 রেফারার</button>
+        <button class="btn btn-outline" style="flex:1 1 0;white-space:nowrap;padding-left:6px;padding-right:6px;" onclick="openTestPriceListModal()">৳ মূল্য তালিকা</button>
+        <button class="btn btn-outline" style="flex:1 1 0;white-space:nowrap;padding-left:6px;padding-right:6px;" onclick="openLabSupplies()">🧰 ল্যাব সামগ্রী</button>
       </div>
       <div class="grid2" style="margin-top:10px;">
         <div class="stat accent" onclick="showTestRevenue()" style="cursor:pointer;"><div class="label">মোট বিক্রয় (টেস্ট)</div><div class="value" id="tsRevenue">৳০</div></div>
