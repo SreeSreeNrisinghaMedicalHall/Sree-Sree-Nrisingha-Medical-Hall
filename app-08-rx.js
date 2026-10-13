@@ -514,6 +514,7 @@ function viewPrescription(id){
 }
 function printPrescription(){ _printOnly('rxReceiptContent', false); }
 function deletePrescriptionFromModal(){
+  if(!requireOwnerRole('প্রেসক্রিপশন মুছে ফেলা')) return;
   if(!_currentRxId) return;
   if(!confirm('এই প্রেসক্রিপশনটা মুছে ফেলতে চান?')) return;
   prescriptions = prescriptions.filter(r=>r.id!==_currentRxId);
@@ -1235,7 +1236,7 @@ async function _scDropPhoto(id){
   try{
     if(!_photoCache[id]) return;
     await photoDelete(id); delete _photoCache[id]; delete _photoFullCache[id];
-    if(cloudReady()){ shopColl('photos').doc(id).delete().catch(()=>{}); shopColl('photos_full').doc(id).delete().catch(()=>{}); }
+    if(cloudReady() && currentRole()==='owner'){ shopColl('photos').doc(id).delete().catch(()=>{}); shopColl('photos_full').doc(id).delete().catch(()=>{}); }
   }catch(e){ console.error(e); }
 }
 async function removeSupContactPhoto(btn){
@@ -1345,6 +1346,7 @@ function saveSupplier(){
   }
 }
 function deleteSupplier(){
+  if(!requireOwnerRole('সাপ্লায়ার মুছে ফেলা')) return;
   if(!editingSupplierId) return;
   if(currentRole()!=='owner'){ toast('সাপ্লায়ার মুছতে পারবেন শুধু মালিক'); return; }
   const id = editingSupplierId;

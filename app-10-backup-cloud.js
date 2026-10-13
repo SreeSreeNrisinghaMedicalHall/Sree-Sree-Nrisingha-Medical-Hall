@@ -196,6 +196,7 @@ async function initCloud(){
       if(!firebase.auth) await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js');
       const user = await new Promise(res=>{ const un = firebase.auth().onAuthStateChanged(u=>{ try{un();}catch(e){} res(u); }); });
       if(!user){ if(navigator.onLine) showCloudLogin(); return null; }
+      try{ localStorage.setItem('ssn_auth_uid', user.uid); }catch(e){}   // এই ফোনে কে লগইন করা (মালিক/কর্মচারী) — অফলাইনেও মনে থাকে
     }
     try{ if(firebase.auth && !window._ssnAuthWatch){ window._ssnAuthWatch = true; firebase.auth().onAuthStateChanged(()=>{ try{ updateCloudStatus(); }catch(e){} }); } }catch(e){}
     cloudDb = firebase.firestore();
@@ -794,7 +795,8 @@ function showCloudLogin(){
       }
       if(!firebase.auth) await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js');
       if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(JSON.parse(localStorage.getItem('ssn_cloud_config')));
-      await firebase.auth().signInWithEmailAndPassword(email, pass);
+      const _cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+      try{ localStorage.setItem('ssn_auth_uid', _cred.user.uid); }catch(e){}
       localStorage.setItem('ssn_auth_on','1');
       localStorage.setItem('ssn_auth_email', email);
       localStorage.removeItem('ssn_last_sync_error');

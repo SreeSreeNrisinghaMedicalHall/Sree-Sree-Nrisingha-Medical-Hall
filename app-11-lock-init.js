@@ -2,7 +2,7 @@
 let lockMode = 'enter'; // 'enter' | 'setup-step1' | 'setup-step2' | 'verify-old'
 let pendingNewPin = '';
 let pinTarget = 'owner'; // which PIN setup-step1/step2 is currently setting: 'owner' or 'staff'
-// Baked-in fallback hash for PIN "0000" — used ONLY when this device has never been able to
+// Baked-in fallback hash for the owner's own first-door number (was "0000" before v22) — used ONLY when this device has never been able to
 // reach the cloud-canonical hash below (e.g. a fresh copy of this file that's never gone
 // online). CHANGE THE PIN FROM SETTINGS THE FIRST TIME YOU OPEN THIS FILE — once that succeeds
 // while online, the new hash becomes canonical in the cloud (pharmacies/{shopCode}.masterPinHash)
@@ -11,7 +11,7 @@ let pinTarget = 'owner'; // which PIN setup-step1/step2 is currently setting: 'o
 // keeps working with whatever PIN it last knew — that's an inherent limit of a file with no
 // server, not something any client-side code can close; the device list below is the tool for
 // cutting off a specific device you no longer trust, on top of changing the PIN itself.
-const FALLBACK_PIN_HASH = '9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0'; // sha256("0000")
+const FALLBACK_PIN_HASH = 'dac2ed050cedfd17beebe4d055e2d6c4c8c9476b42494130e318e166091617dc'; // মালিকের নিজের বানানো "প্রথম দরজা" সংখ্যার হ্যাশ (আগে ছিল 0000) — নতুন ফোনে ক্লাউডে যুক্ত হওয়ার আগে শুধু এটাই চলে
 // Brute-force lockout: a stolen phone can be tried against the PIN screen indefinitely with
 // nothing else stopping it, so after MAX_PIN_ATTEMPTS wrong PINs in a row (tracked in
 // localStorage, so closing/reopening the tab does NOT reset the count — sessionStorage would
@@ -35,7 +35,11 @@ function resetFailedAttempts(){
   localStorage.removeItem('ssn_lockout_active');
 }
 function isLockedOut(){ return localStorage.getItem('ssn_lockout_active')==='1'; }
-let activePinHash = localStorage.getItem('ssn_master_pin_hash_cache') || FALLBACK_PIN_HASH;
+// কর্মচারীর ক্লাউড-অ্যাকাউন্টে লগইন করা ফোনে মালিকের PIN যাচাইয়ের কোনো হ্যাশই থাকে না (ক্লাউডে মালিকের হ্যাশ মালিক-only জায়গায়)।
+// তাই এই ফোনে "মালিক PIN" দিয়ে মালিক সাজা যায় না — 0000 দিয়েও না।
+const NO_OWNER_PIN_HASH = 'x-no-owner-pin-on-staff-phone';
+function _isStaffCloudPhone(){ try{ const u = localStorage.getItem('ssn_auth_uid'); return !!u && u !== OWNER_CLOUD_UID; }catch(e){ return false; } }
+let activePinHash = _isStaffCloudPhone() ? NO_OWNER_PIN_HASH : (localStorage.getItem('ssn_master_pin_hash_cache') || FALLBACK_PIN_HASH);
 // Optional second, lower-privilege PIN an owner can hand to staff — it unlocks the app for
 // day-to-day work but is checked separately from the owner hash above, so someone who only
 // knows this one can never reach "PIN পরিবর্তন করুন" or "ডিভাইস ব্যবস্থাপনা" (both gated to
@@ -58,7 +62,30 @@ async function syncMasterPinHash(){
     if(!db) return;
     const doc = await db.collection('pharmacies').doc(shopCode).get();
     const data = doc.exists ? doc.data() : null;
-    if(data && data.masterPinHash){
+    let cloudUser = null; try{ cloudUser = firebase.auth && firebase.auth().currentUser; }catch(e){}
+    if(cloudUser && cloudUser.uid !== OWNER_CLOUD_UID){
+      // কর্মচারীর অ্যাকাউন্ট: মালিকের হ্যাশ কখনো নয়, আর পুরনো ক্যাশও মুছে ফেলা
+      activePinHash = NO_OWNER_PIN_HASH;
+      localStorage.removeItem('ssn_master_pin_hash_cache');
+    } else if(cloudUser && cloudUser.uid === OWNER_CLOUD_UID){
+      // মালিকের অ্যাকাউন্ট: হ্যাশ থাকে মালিক-only ডকুমেন্টে (private/owner)। না থাকলে আগের জায়গা (দোকানের মূল ডকুমেন্ট) থেকে সরিয়ে আনা হয়।
+      const privRef = db.collection('pharmacies').doc(shopCode).collection('private').doc('owner');
+      let privHash = null, privOk = true;
+      try{ const pd = await privRef.get(); privHash = pd.exists ? (pd.data().masterPinHash||null) : null; }catch(e){ privOk = false; console.warn('private read', e); }
+      if(privHash){
+        activePinHash = privHash; localStorage.setItem('ssn_master_pin_hash_cache', privHash);
+        if(data && data.masterPinHash){ try{ await doc.ref.update({masterPinHash: firebase.firestore.FieldValue.delete()}); }catch(e){} }
+      } else if(data && data.masterPinHash){
+        activePinHash = data.masterPinHash; localStorage.setItem('ssn_master_pin_hash_cache', data.masterPinHash);
+        if(privOk){
+          try{
+            await privRef.set({masterPinHash: data.masterPinHash}, {merge:true});
+            const chk = await privRef.get();
+            if(chk.exists && chk.data().masterPinHash === data.masterPinHash){ await doc.ref.update({masterPinHash: firebase.firestore.FieldValue.delete()}); }
+          }catch(e){ console.warn('master hash move failed — আগের জায়গাতেই থাকল', e); }
+        }
+      }
+    } else if(data && data.masterPinHash){
       activePinHash = data.masterPinHash;
       localStorage.setItem('ssn_master_pin_hash_cache', data.masterPinHash);
     }
@@ -413,7 +440,13 @@ async function submitLockPin(){
       const shopCode = localStorage.getItem('ssn_shop_code');
       const db = await initCloud();
       if(db && shopCode){
-        await db.collection('pharmacies').doc(shopCode).set({masterPinHash: hash}, {merge:true});
+        let moved = false;
+        try{
+          await db.collection('pharmacies').doc(shopCode).collection('private').doc('owner').set({masterPinHash: hash}, {merge:true});
+          moved = true;
+          try{ await db.collection('pharmacies').doc(shopCode).update({masterPinHash: firebase.firestore.FieldValue.delete()}); }catch(e){}
+        }catch(e){ console.warn('private write failed, falling back', e); }
+        if(!moved) await db.collection('pharmacies').doc(shopCode).set({masterPinHash: hash}, {merge:true});   // রুলস এখনো পুরনো থাকলে আগের জায়গায়
         toast('PIN পরিবর্তন করা হয়েছে ✓ — অন্য সব ডিভাইসেও এখন এই নতুন PIN লাগবে');
       } else {
         toast('⚠️ PIN বদলেছে এই ফোনে, কিন্তু ক্লাউড সংযুক্ত না থাকায় অন্য ফোনে এখনো পুরনো PIN চলতে পারে — ক্লাউড সংযোগ করে আবার চেষ্টা করুন');

@@ -496,6 +496,7 @@ function _savePurchaseCore(newSell){
   }
 }
 function deletePurchase(){
+  if(!requireOwnerRole('ক্রয় এন্ট্রি মুছে ফেলা')) return;
   if(!editingPurchaseId) return;
   const p = purchases.find(x=>x.id===editingPurchaseId);
   if(!askDelete(`এই ক্রয় এন্ট্রি মুছে ফেলবেন? ওষুধের স্টক থেকে ${p?p.qty:''} কমে যাবে।`)) return;

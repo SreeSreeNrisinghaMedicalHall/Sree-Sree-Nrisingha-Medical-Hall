@@ -255,6 +255,7 @@ function addExpense(d){
   toast('খরচ যোগ হয়েছে ✓'); showCashBook(d); try{ updateCashTile(); }catch(e){}
 }
 function deleteExpense(id, d){
+  if(!requireOwnerRole('খরচ মুছে ফেলা')) return;
   if(!confirm('এই খরচটা মুছে ফেলবেন?')) return;
   addTombstone(id);   // save()-এর স্টেল-রিকভারি যেন ফেরত না আনে
   payments = payments.filter(p=>p.id!==id);

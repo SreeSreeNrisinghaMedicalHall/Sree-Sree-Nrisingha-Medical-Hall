@@ -189,6 +189,7 @@ function saveMedicine(){
   }
 }
 function deleteMedicine(){
+  if(!requireOwnerRole('ওষুধ মুছে ফেলা')) return;
   if(!editingMedId) return;
   const idToDelete = editingMedId;
   const _m = medicines.find(x=>x.id===idToDelete);

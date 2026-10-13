@@ -154,6 +154,7 @@ async function pickCustomerPhoto(evt){
   }catch(e){ console.error(e); toast('ছবি যোগ করা যায়নি (কাস্টমারের তথ্য অক্ষত আছে)'); }
 }
 async function removeCustomerPhoto(){
+  if(!requireOwnerRole('ছবি সরানো')) return;
   const id = editingCustomerId; if(!id) return;
   try{
     await photoDelete(id); delete _photoCache[id]; delete _photoFullCache[id];

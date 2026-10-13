@@ -142,6 +142,7 @@ function saveNewTestPrice(){
   renderTestPriceList();
 }
 function deleteCustomTest(name){
+  if(!requireOwnerRole('টেস্ট মুছে ফেলা')) return;
   if(!confirm(`"${name}" টেস্টটা তালিকা থেকে মুছে ফেলতে চান?`)) return;
   const p = findTestPrice(name);
   testPrices = testPrices.filter(x=>x.name!==name);
@@ -293,6 +294,7 @@ function saveReferrer(){
   renderReferrerList();
 }
 function deleteReferrer(id){
+  if(!requireOwnerRole('রেফারার মুছে ফেলা')) return;
   const r = referrers.find(x=>x.id===id);
   if(!r) return;
   if(r.due>0){ toast('এই রেফারারের বকেয়া কমিশন এখনো পরিশোধ হয়নি — আগে পরিশোধ করুন'); return; }
@@ -562,6 +564,7 @@ function viewLabTestReceipt(id){
 }
 function printLabTestReceipt(){ _printOnly('labTestReceiptContent', false); }
 function deleteLabTestFromModal(){
+  if(!requireOwnerRole('টেস্ট রিপোর্ট মুছে ফেলা')) return;
   if(!_currentLabTestId) return;
   if(!confirm('এই টেস্ট রিপোর্টটা মুছে ফেলতে চান?')) return;
   labTests = labTests.filter(t=>t.id!==_currentLabTestId);
