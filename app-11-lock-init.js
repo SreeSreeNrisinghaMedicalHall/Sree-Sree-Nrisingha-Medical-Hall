@@ -578,8 +578,14 @@ if(localStorage.getItem('ssn_cloud_config') && localStorage.getItem('ssn_shop_co
 window.addEventListener('offline', ()=>{ cloudLive = false; updateCloudStatus(); });
 window.addEventListener('online', ()=>{
   if(localStorage.getItem('ssn_cloud_config') && localStorage.getItem('ssn_shop_code')){
-    cloudDb = null;
-    attachRealtimeListeners();
+    // পড়া খরচ কমাতে: নেট ঝিমিয়ে আবার এলে সব লিসেনার ভেঙে নতুন করে পুরো ডাটা পড়া হতো।
+    // লিসেনার আগে থেকেই চালু ও কোনো ত্রুটি না থাকলে Firestore নিজেই সংযোগ ফিরিয়ে নেয় — শুধু অবস্থা আপডেট করি।
+    if(typeof liveListeners!=='undefined' && liveListeners.length && !localStorage.getItem('ssn_last_sync_error')){
+      cloudLive = true; updateCloudStatus();
+    } else {
+      cloudDb = null;
+      attachRealtimeListeners();
+    }
   }
 });
 if ('serviceWorker' in navigator) {

@@ -358,9 +358,12 @@ function scheduleRerender(){
   _rerenderDebounceTimer = setTimeout(rerenderCurrentSection, 150);
 }
 async function migrateLegacyIfNeeded(db, shopCode){
+  // পড়া খরচ কমাতে: একবার যাচাই শেষ হলে এই ফোনে আর প্রতিবার অ্যাপ খোলায় ১০–১১টা পড়া করা হবে না
+  const _migFlag = 'ssn_legacy_checked_'+shopCode;
+  if(localStorage.getItem(_migFlag)==='1') return;
   try{
     const legacyDoc = await db.collection('pharmacies').doc(shopCode).get();
-    if(!legacyDoc.exists) return;
+    if(!legacyDoc.exists){ try{ localStorage.setItem(_migFlag,'1'); }catch(e){} return; }
     const data = legacyDoc.data();
     for(const c of LIVE_COLLECTIONS){
       const arr = data[c.arrKey];
@@ -371,6 +374,7 @@ async function migrateLegacyIfNeeded(db, shopCode){
       arr.forEach(item=>{ const ref = shopColl(c.name).doc(item.id||uid()); batch.set(ref, item); });
       await batch.commit();
     }
+    try{ localStorage.setItem(_migFlag,'1'); }catch(e){}
   }catch(e){ console.error('migration error', e); }
 }
 

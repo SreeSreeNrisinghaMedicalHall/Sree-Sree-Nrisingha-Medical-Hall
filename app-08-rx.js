@@ -1018,6 +1018,25 @@ function _lbAssign(pid, name){
   if(_currentLedgerCustId) showLedger(_currentLedgerCustId);
   try{ renderCustomers(); }catch(e){}
 }
+let _ledgerNames = [];
+// মালিক চাইলে যেকোনো জমা/বাকি-যোগ এন্ট্রির "কার নামে" বদলাতে পারবেন (মোট বাকি বদলায় না, শুধু নামের ভাগ)
+function _reassignSel(e){
+  if(currentRole()!=='owner' || !e.id || !_ledgerNames.length) return '';
+  const opts = _ledgerNames.map(n=>`<option value="${escapeHtml(n).replace(/"/g,'&quot;')}">${escapeHtml(n)}</option>`).join('');
+  return `<div onclick="event.stopPropagation()" style="margin-top:4px;"><select onchange="_lbReassign('${e.id}',this.value)" style="max-width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:8px;font-size:12px;"><option value="">✎ কার নামে — বদলান</option>${opts}</select></div>`;
+}
+function _lbReassign(pid, name){
+  if(!name) return;
+  if(!requireOwnerRole('লেনদেনের নাম বদলানো')) return;
+  const p = payments.find(x=>x.id===pid); if(!p) return;
+  if(!confirm('এই লেনদেন "'+name+'"-এর নামে ধরবেন?\n(মোট বাকি বদলাবে না, শুধু কার নামে তা বদলাবে)')) return;
+  p.forName = name;
+  save(DB_KEYS.payment, payments);
+  try{ if(cloudReady()) shopColl('payments').doc(pid).set({forName:name},{merge:true}).catch(e=>console.error(e)); }catch(e){}
+  toast('"'+name+'"-এর নামে ধরা হয়েছে ✓');
+  if(_currentLedgerCustId) showLedger(_currentLedgerCustId);
+  try{ renderCustomers(); }catch(e){}
+}
 function _lbPay(i){ const p=_lbPeople[i]; if(p && _currentLedgerCustId) openPaymentModal(_currentLedgerCustId, p.name); }
 function _lbAdd(i){ const p=_lbPeople[i]; if(p && _currentLedgerCustId) openAdjustDueModal(_currentLedgerCustId, p.name); }
 function showLedger(custId){
@@ -1026,9 +1045,11 @@ function showLedger(custId){
   if(!c) return;
   const custSales = sales.filter(s=>s.customerId===custId);
   const custPayments = payments.filter(p=>p.customerId===custId);
+  { const seen = new Set(); _ledgerNames = [];
+    [c.name, ...custSales.map(s=>s.patientName), ...custPayments.map(p=>p.forName)].forEach(n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); _ledgerNames.push(n); } }); }
   const events = [
     ...custSales.map(s=>({ts:s.ts, type:'sale', id:s.id, items:s.items, total:s.total, cash:s.cashPaidNow??s.total, due:s.dueAdded??0, rxId:s.rxId||null, patientName:s.patientName||null})),
-    ...custPayments.map(p=>({ts:p.ts, type:(p.type==='due_adjustment'?'adjust':'payment'), amount:p.amount, forName:p.forName||null}))
+    ...custPayments.map(p=>({ts:p.ts, type:(p.type==='due_adjustment'?'adjust':'payment'), amount:p.amount, forName:p.forName||null, id:p.id||null}))
   ].sort((a,b)=>a.ts-b.ts);
   let running = 0;
   const rowsHtml = events.map(e=>{
@@ -1070,9 +1091,9 @@ function showLedger(custId){
       </div>`;
     }
     if(e.type==='adjust'){
-      return `<div class="row-item"><div><div class="row-title">বাকি যোগ করা হয়েছে (ম্যানুয়াল)</div><div class="row-sub">${dt}${e.forName?' • নামে: <b>'+escapeHtml(e.forName)+'</b>':''}</div></div><div class="row-right"><span class="badge badge-gold">+${fmt(e.amount)}</span><div class="row-sub" style="margin-top:3px;">বাকি: ${dueText(running)}</div></div></div>`;
+      return `<div class="row-item"><div><div class="row-title">বাকি যোগ করা হয়েছে (ম্যানুয়াল)</div><div class="row-sub">${dt}${e.forName?' • নামে: <b>'+escapeHtml(e.forName)+'</b>':''}</div>${_reassignSel(e)}</div><div class="row-right"><span class="badge badge-gold">+${fmt(e.amount)}</span><div class="row-sub" style="margin-top:3px;">বাকি: ${dueText(running)}</div></div></div>`;
     }
-    return `<div class="row-item"><div><div class="row-title">টাকা জমা নিয়েছেন</div><div class="row-sub">${dt}${e.forName?' • নামে: <b>'+escapeHtml(e.forName)+'</b>':''}</div></div><div class="row-right"><span class="badge badge-green">-${fmt(e.amount)}</span><div class="row-sub" style="margin-top:3px;">বাকি: ${dueText(running)}</div></div></div>`;
+    return `<div class="row-item"><div><div class="row-title">টাকা জমা নিয়েছেন</div><div class="row-sub">${dt}${e.forName?' • নামে: <b>'+escapeHtml(e.forName)+'</b>':''}</div>${_reassignSel(e)}</div><div class="row-right"><span class="badge badge-green">-${fmt(e.amount)}</span><div class="row-sub" style="margin-top:3px;">বাকি: ${dueText(running)}</div></div></div>`;
   });
   // The running-বাকি balance above has to be computed oldest→newest (each entry depends on the
   // one before it) — but the person wants to actually SEE the newest transaction first, so the
