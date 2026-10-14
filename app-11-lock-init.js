@@ -141,7 +141,7 @@ async function refreshMedicinesFromCloud(){
     const coll = shopColl('medicines');
     if(!coll) return;
     const snap = await coll.get();
-    const arr = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    const arr = snap.docs.map(d=>deltaRec(d));
     if(currentRole()==='owner'){
       // ওষুধের ডকুমেন্টে এখন buy নেই — আলাদা medicineCosts থেকে (না পেলে ফোনের কপি থেকে) ফিরিয়ে বসাই
       try{ const cs = await shopColl('medicineCosts').get(); cs.docs.forEach(d=>{ const v = d.data().buy; if(typeof v==='number' && isFinite(v)) _costMap[d.id] = v; }); }catch(e){ console.warn('costs refresh', e); }

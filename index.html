@@ -355,6 +355,9 @@
       <div class="card">
         <div id="cloudStatus"><span class="badge badge-red">সংযুক্ত নয়</span></div>
         <button class="btn btn-sm btn-outline btn-block" style="margin-top:8px;" onclick="openPendingUploads()">☁️ এই ফোনে আছে, ক্লাউডে নেই — মিলিয়ে দেখুন</button>
+        <button class="btn btn-sm btn-outline btn-block" id="deltaSyncBtn" style="margin-top:8px;" onclick="toggleDeltaSync()">⚡ দ্রুত সিঙ্ক চালু করুন</button>
+        <button class="btn btn-sm btn-outline btn-block" style="margin-top:6px;" onclick="deltaFullResync()">🔄 পুরো ডাটা এখনই মিলিয়ে নিন</button>
+        <div class="row-sub" id="deltaSyncInfo" style="margin-top:6px;"></div>
         <div class="row-sub" style="margin-top:8px;">ফোন হারালে বা নষ্ট হলেও ডাটা যেন ফিরে পান, এবং একাধিক ফোনে একসাথে নিরাপদে বিক্রি করতে পারেন — এর জন্য একবার ক্লাউড সংযোগ করে নিন। সংযোগ করলে প্রতিটা ফোনের এন্ট্রি সাথে সাথে সব ফোনে দেখা যাবে।</div>
         <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="openModal('cloudModalBackdrop')">☁ ক্লাউড সংযোগ করুন / দেখুন</button>
         <div class="grid2" style="margin-top:8px;">
@@ -965,7 +968,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

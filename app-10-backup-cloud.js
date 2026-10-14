@@ -146,6 +146,7 @@ function hideDueListBar(){
   };
 })();
 function importData(evt){
+  try{ deltaForceFull(); }catch(e){}   // ব্যাকআপ থেকে ফেরালে পরের সিঙ্কে পুরোটা মিলিয়ে নেবে
   const file = evt.target.files[0]; if(!file) return;
   const reader = new FileReader();
   reader.onload = async e=>{
@@ -212,7 +213,8 @@ async function initCloud(){
 function shopColl(name){
   const shopCode = localStorage.getItem('ssn_shop_code');
   if(!cloudDb || !shopCode) return null;
-  const _c = cloudDb.collection('pharmacies').doc(shopCode).collection(name);
+  const _c0 = cloudDb.collection('pharmacies').doc(shopCode).collection(name);
+  const _c = (typeof _stampColl==='function' && DELTA_COLLS.indexOf(name)>-1) ? _stampColl(_c0) : _c0;   // v27: প্রতিটা লেখায় _u (সার্ভারের সময়) বসে
   return name==='medicines' ? _wrapMedColl(_c) : _c;
 }
 // Whether a write can be handed to Firestore right now. Deliberately NOT the same as `cloudLive`
@@ -241,7 +243,7 @@ function _costWrite(id, data){
     _costMap[id] = v;
     const shop = localStorage.getItem('ssn_shop_code');
     if(!cloudDb || !shop) return;
-    cloudDb.collection('pharmacies').doc(shop).collection('medicineCosts').doc(id).set({buy:v}, {merge:true}).catch(e=>console.warn('ক্রয়মূল্য ক্লাউডে যায়নি', id, e));
+    cloudDb.collection('pharmacies').doc(shop).collection('medicineCosts').doc(id).set(_deltaStamp({buy:v}), {merge:true}).catch(e=>console.warn('ক্রয়মূল্য ক্লাউডে যায়নি', id, e));
   }catch(e){ console.warn('cost write error', e); }
 }
 function _wrapMedDoc(ref){
@@ -276,7 +278,7 @@ function _installBatchWrapper(db){
   db.__costWrapped = true;
   const orig = db.batch.bind(db);
   db.__origBatch = orig;   // মাইগ্রেশনে আসল (র‍্যাপারহীন) ব্যাচ লাগে
-  const un = r=>(r && r.__real) ? r.__real : r;
+  const un = r=>{ let x=r, g=0; while(x && x.__real && x.__real!==x && g++<4) x=x.__real; return x; };   // একাধিক র‍্যাপার (স্ট্যাম্প+ওষুধ) পার করে আসল রেফারেন্স
   const isMed = r=>{ try{ return /\/medicines\/[^/]+$/.test(r.path); }catch(e){ return false; } };
   db.batch = function(){
     const b = orig(), costs = [];
@@ -284,6 +286,7 @@ function _installBatchWrapper(db){
       set(ref, data, opts){
         const r = un(ref);
         if(isMed(r) && _hasBuy(data)){ costs.push([r.id, data]); data = _stripBuy(data); }
+        data = _batchStamp(r, data);
         if(opts) b.set(r, data, opts); else b.set(r, data);
         return w;
       },
@@ -292,9 +295,10 @@ function _installBatchWrapper(db){
         if(isMed(r) && a.length===1 && _hasBuy(a[0])){
           costs.push([r.id, a[0]]);
           const d = _stripBuy(a[0]);
-          if(Object.keys(d).length) b.update(r, d);
+          if(Object.keys(d).length) b.update(r, _batchStamp(r, d));
           return w;
         }
+        if(a.length===1) a = [_batchStamp(r, a[0])];
         b.update(r, ...a); return w;
       },
       delete(ref){ b.delete(un(ref)); return w; },
@@ -489,19 +493,11 @@ async function attachRealtimeListeners(){
   liveListeners.forEach(unsub=>unsub());
   liveListeners = [];
   _lazyOn = {}; _liveByName = {};
+  const gen = deltaNextGen();
+  await deltaSyncCloudFlag(db, shopCode);   // মালিক দ্রুত সিঙ্ক চালু করে থাকলে এই ফোনও (কর্মচারীর ফোনসহ) সেটা অনুসরণ করে
   await migrateLegacyIfNeeded(db, shopCode);
-  const attachOne = (c, full)=>{
-    // sales/purchases only listen for records newer than the archive cutoff — otherwise this
-    // listener would re-fetch the FULL cloud collection (including anything archiveOldRecords()
-    // just removed locally) on every single change anywhere in the shop, from any device, and
-    // save()'s own merge-back-missing-records safety net would immediately undo the archive by
-    // treating the "missing" old records as a stale write to recover from. Anything genuinely
-    // still local-only and un-archived (not in this filtered query, not tombstoned) is still
-    // preserved by that same merge-back logic — it's just no longer redundantly re-fetched.
-    const query = (c.recentOnlyField && !full) ? shopColl(c.name).where(c.recentOnlyField, '>', Date.now()-(c.recentMs||ARCHIVE_AGE_MS)) : shopColl(c.name);
-    if(_liveByName[c.name]){ try{ _liveByName[c.name](); }catch(e){} }
-    const unsub = query.onSnapshot(snapshot=>{
-      const arr = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
+  // ক্লাউড থেকে আসা রেকর্ড ফোনে বসানো। isFull=true: recs মানে ক্লাউডের পুরো তালিকা (আগের মতোই); false: শুধু বদলানো রেকর্ড — আগের তালিকায় id ধরে বসে/যোগ হয়।
+  const _applyRecs = (c, recs, isFull)=>{
       if(c.name==='customers'){
         // Beyond the timing-based LOCAL_WRITE_GRACE_MS protection above, a customer's মোবাইল/
         // ঠিকানা/অভিভাবক once saved locally should never be silently blanked out just because an
@@ -513,7 +509,7 @@ async function attachRealtimeListeners(){
         try{
           const localCur = JSON.parse(localStorage.getItem(c.dbKey))||[];
           const localById = {}; localCur.forEach(rec=>{ if(rec&&rec.id) localById[rec.id]=rec; });
-          arr.forEach(rec=>{
+          recs.forEach(rec=>{
             const loc = localById[rec.id];
             if(!loc) return;
             ['mobile','address','guardian'].forEach(f=>{ if(!rec[f] && loc[f]) rec[f] = loc[f]; });
@@ -525,11 +521,18 @@ async function attachRealtimeListeners(){
         // নইলে এই সিঙ্কেই ফোনের সব ক্রয়মূল্য মুছে যেত।
         try{
           const lb = {}; (load(c.dbKey)||[]).forEach(r=>{ if(r && r.id) lb[r.id] = r.buy; });
-          arr.forEach(r=>{
+          recs.forEach(r=>{
             if(_costMap[r.id]!==undefined) r.buy = _costMap[r.id];
             else if(r.buy===undefined && lb[r.id]!==undefined) r.buy = lb[r.id];
           });
         }catch(buyErr){ console.error('buy restore failed', buyErr); }
+      }
+      let arr = recs;
+      if(!isFull){
+        const live = getLiveArray(c.arrKey) || [];
+        const idx = new Map(); live.forEach((r,i)=>{ if(r && r.id) idx.set(r.id, i); });
+        arr = live.slice();
+        recs.forEach(r=>{ const i = idx.get(r.id); if(i===undefined){ idx.set(r.id, arr.length); arr.push(r); } else arr[i] = r; });
       }
       setLiveArray(c.arrKey, arr);
       // Save the REAL data (with cost prices intact) first — stripCostPriceForStaff() must only
@@ -544,23 +547,50 @@ async function attachRealtimeListeners(){
       if(c.name==='customers'||c.name==='sales'||c.name==='payments') scheduleDueReconcile(c.name);
       if(c.name==='medicines') stripCostPriceForStaff();
       scheduleRerender();
-    }, err=>{
+  };
+  const onSnapErr = err=>{
       console.error(err);
       if(err && err.code==='permission-denied'){
         cloudLive = false;
         try{ localStorage.setItem('ssn_last_sync_error', 'অনুমতি নেই (permission-denied) — এই ফোনে লগইন করা নেই বা লগইনের অনুমতি নেই। ফোনের ডাটা নিরাপদ আছে। 🔐 লগইন করুন।'); updateCloudStatus(); }catch(e2){}
       }
-    });
+  };
+  // v28: বিক্রি/ক্রয় এখন সবসময় পুরো ইতিহাসসহ পড়া হয় — আগে ১ বছরের চলন্ত সীমা ছিল, কিন্তু কাস্টমারের বাকি ও সাপ্লায়ারের বাকি পুরো ইতিহাস যোগ করে হিসাব হয়,
+  // তাই নতুন/মোছা ফোনে পুরনো রেকর্ড বাদ পড়লে বাকি ভুল আসত। সীমা শুধু তখনই চলে যখন এই ফোনে মালিক নিজে হাতে "আর্কাইভ" চালিয়েছেন (ssn_archived_any) — আগের মতোই।
+  // ল্যাব টেস্টের ৩০ দিনের সীমা (খোলার সময়) আগের মতোই।
+  const bootQuery = (c, full)=>{
+    const win = c.recentMs || (localStorage.getItem('ssn_archived_any') ? ARCHIVE_AGE_MS : 0);
+    return (c.recentOnlyField && !full && win) ? shopColl(c.name).where(c.recentOnlyField, '>', Date.now()-win) : shopColl(c.name);
+  };
+  // পুরনো পদ্ধতি (আগের মতো হুবহু): পুরো তালিকার লাইভ লিসেনার
+  const legacyAttach = (c, full)=>{
+    const query = bootQuery(c, full);
+    if(_liveByName[c.name]){ try{ _liveByName[c.name](); }catch(e){} }
+    let first = true;
+    const unsub = query.onSnapshot(snapshot=>{
+      if(first){ first = false; try{ if(!snapshot.metadata.fromCache) deltaCountReads(snapshot.size); }catch(e){} }
+      _applyRecs(c, snapshot.docs.map(d=>deltaRec(d)), true);
+    }, onSnapErr);
     _liveByName[c.name] = unsub;
     liveListeners.push(unsub);
+  };
+  // নতুন পদ্ধতি (দ্রুত সিঙ্ক চালু থাকলে): প্রথমে একবার পুরো, তারপর শুধু বদলানো; কিছু ভুল হলে পুরনো পদ্ধতিতে ফেরে
+  const deltaAttachOne = (c, full)=>{
+    if(_liveByName[c.name]){ try{ _liveByName[c.name](); }catch(e){} _liveByName[c.name] = null; }
+    deltaStart(c.name, ()=>bootQuery(c, full), (docs, isBoot)=>_applyRecs(c, docs.map(d=>deltaRec(d)), isBoot), onSnapErr, gen, ()=>{ const a = getLiveArray(c.arrKey); return a ? a.length : 0; })
+      .then(unsub=>{ if(unsub){ _liveByName[c.name] = unsub; liveListeners.push(unsub); } })
+      .catch(e=>{ console.warn('দ্রুত সিঙ্ক শুরু হয়নি, পুরনো পদ্ধতিতে চলছে:', c.name, e); if(gen===_deltaGen) legacyAttach(c, full); });
+  };
+  const attachOne = (c, full)=>{
+    if(deltaEnabled() && (!c.lazy || full)) deltaAttachOne(c, full); else legacyAttach(c, full);
   };
   _attachOneFn = attachOne;
   LIVE_COLLECTIONS.forEach(c=>{ if(c.lazy==='skip') return; attachOne(c, false); });
   try{
     _seedCostMap(true);
-    const cu = shopColl('medicineCosts').onSnapshot(snap=>{
+    const applyCostDocs = docs=>{
       let changed = false;
-      snap.docs.forEach(d=>{
+      docs.forEach(d=>{
         const v = d.data().buy;
         if(typeof v!=='number' || !isFinite(v)) return;
         const w = _recentLocalWriteAt[d.id];
@@ -568,8 +598,16 @@ async function attachRealtimeListeners(){
         if(_costMap[d.id]!==v){ _costMap[d.id] = v; changed = true; }
       });
       if(changed && currentRole()==='owner'){ _applyCostMap(medicines); save(DB_KEYS.med, medicines, true); scheduleRerender(); }
-    }, ()=>{ /* কর্মচারীর লগইনে অনুমতি নেই — এটাই স্বাভাবিক, চুপচাপ থাকবে */ });
-    liveListeners.push(cu);
+    };
+    const legacyCosts = ()=>{
+      const cu = shopColl('medicineCosts').onSnapshot(snap=>applyCostDocs(snap.docs), ()=>{ /* কর্মচারীর লগইনে অনুমতি নেই — এটাই স্বাভাবিক, চুপচাপ থাকবে */ });
+      liveListeners.push(cu);
+    };
+    if(deltaEnabled() && currentRole()==='owner'){
+      deltaStart('medicineCosts', ()=>shopColl('medicineCosts'), (docs)=>applyCostDocs(docs), ()=>{}, gen, ()=>Object.keys(_costMap).length)
+        .then(unsub=>{ if(unsub) liveListeners.push(unsub); })
+        .catch(e=>{ console.warn('ক্রয়মূল্যের দ্রুত সিঙ্ক শুরু হয়নি:', e); if(gen===_deltaGen) legacyCosts(); });
+    } else legacyCosts();
   }catch(e){ console.warn('medicineCosts listener', e); }
   cloudLive = true;
   localStorage.setItem('ssn_last_sync', Date.now());
@@ -648,6 +686,7 @@ async function openCloudBackupList(){
   }catch(e){ console.error(e); document.getElementById('cloudBackupRows').textContent = 'তালিকা আনা যায়নি: '+(e&&e.message?e.message:e); }
 }
 async function restoreCloudBackup(date){
+  try{ deltaForceFull(); }catch(e){}
   try{
     if(!confirm(date+'-এর স্বয়ংক্রিয় ব্যাকআপ থেকে ফেরাবেন?\n\nফোনের এখনকার অবস্থাও আগে একটা রিস্টোর পয়েন্ট হিসেবে জমা থাকবে, আর কোনো রেকর্ড মোছা হবে না।')) return;
     toast('ব্যাকআপ আনা হচ্ছে…');
@@ -703,6 +742,7 @@ function saveCloudConfig(){
   }catch(e){ toast('Config ফরম্যাট সঠিক নয় (JSON আকারে পেস্ট করুন)'); }
 }
 function updateCloudStatus(){
+  try{ updateDeltaSyncUi(); }catch(e){}
   const el = document.getElementById('cloudStatus'); if(!el) return;
   const shopCode = localStorage.getItem('ssn_shop_code');
   const last = localStorage.getItem('ssn_last_sync');

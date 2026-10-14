@@ -650,6 +650,7 @@ async function safeRestore(incoming, label, opts){
   return totalAdded;
 }
 function restoreFromSnapshot(snap){
+  try{ deltaForceFull(); }catch(e){}
   // রিস্টোর পয়েন্ট আগেই জমা হয়ে থাকে (confirmRestoreSnapshotIDB দেখুন); IndexedDB না থাকা ব্রাউজারে এখানেই জমা হবে
   return safeRestore(snap, 'স্ন্যাপশট', {incomingWins:true, pre:!window.indexedDB});
 }
@@ -731,6 +732,7 @@ async function runArchiveOldRecords(){
   }
   let msg = `১ বছরের বেশি পুরনো ${confirmedSales.length} টা বিক্রয় আর ${confirmedPurchases.length} টা ক্রয় রেকর্ড ক্লাউডে নিশ্চিতভাবে সংরক্ষিত পাওয়া গেছে।\n\nএগুলো এই ফোন থেকে সরিয়ে জায়গা খালি করা হবে (ক্লাউডে থেকেই যাবে — দরকার হলে নিচের "পুরনো ইতিহাস ফিরিয়ে আনুন" দিয়ে আবার আনা যাবে)।`;
   if(unconfirmedCount) msg += `\n\n(${unconfirmedCount} টা রেকর্ড এখনো ক্লাউডে নিশ্চিত হয়নি, তাই ওগুলো ফোনেই থেকে যাবে।)`;
+  msg += '\n\n⚠️ আর্কাইভ করলে এই ফোনে কাস্টমারের বাকির স্বয়ংক্রিয় মেলানো বন্ধ হয়ে যাবে (পুরো ইতিহাস না থাকায়)। ফোনে জায়গার সমস্যা না থাকলে আর্কাইভ করার দরকার নেই।';
   msg += '\n\nএগিয়ে যাবেন?';
   if(!confirm(msg)) return;
   const confirmedSaleIds = new Set(confirmedSales.map(s=>s.id));
@@ -754,8 +756,8 @@ async function restoreArchivedHistory(){
   if(!confirm('ক্লাউড থেকে সব পুরনো বিক্রয়/ক্রয় ইতিহাস আবার এই ফোনে ফিরিয়ে আনবেন? এতে ফোনের জায়গা আবার বেশি লাগবে।')) return;
   try{
     const [salesSnap, purchSnap] = await Promise.all([shopColl('sales').get(), shopColl('purchases').get()]);
-    const cloudSales = salesSnap.docs.map(d=>({id:d.id, ...d.data()}));
-    const cloudPurchases = purchSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    const cloudSales = salesSnap.docs.map(d=>deltaRec(d));
+    const cloudPurchases = purchSnap.docs.map(d=>deltaRec(d));
     // Merge, never replace outright — a local-only record that never actually made it to the
     // cloud (still pending, or a sync failure) must not be silently discarded just because we're
     // pulling old history back in from the cloud side.
