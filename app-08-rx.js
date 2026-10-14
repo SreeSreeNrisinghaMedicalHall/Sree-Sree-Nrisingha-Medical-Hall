@@ -877,11 +877,70 @@ function renderCustomers(){
   }
 }
 let adjustingCustomerId = null, _adjForName = null, _payForName = null;
+// ===== জমা/বাকি যোগ করার সময় "কার নামে" — আগেভাগে জিজ্ঞেস করা =====
+// একাধিক নাম থাকলে (কাস্টমার নিজে + রোগী/পরিবারের অন্য নাম) বেছে নেওয়া বাধ্যতামূলক। শুধু একটাই নাম থাকলে কিছু জিজ্ঞেস করে না —
+// কাস্টমারের নিজের নামেই ধরে (forOwn চিহ্ন বসে, নাম পরে বদলালেও হিসাব ঠিক থাকে)। চাইলে "অন্য কারো নামে ধরবেন?" চেপে নতুন নামও দেওয়া যায়।
+function _custNamesList(c){
+  const seen = new Set(), out = [];
+  const add = n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); out.push(n); } };
+  add(c.name);
+  sales.forEach(s=>{ if(s.customerId===c.id) add(s.patientName); });
+  payments.forEach(p=>{ if(p.customerId===c.id) add(p.forName); });
+  return out;
+}
+function _setupForPicker(pfx, c, preName){
+  const wrap = document.getElementById(pfx+'ForWrap'), sel = document.getElementById(pfx+'ForSel');
+  const nw = document.getElementById(pfx+'ForNew'), link = document.getElementById(pfx+'ForLink');
+  if(!wrap || !sel || !nw || !link) return;
+  const own = (c.name||'').trim();
+  const names = _custNamesList(c);
+  const multi = names.length >= 2;
+  const esc = x=>escapeHtml(x).replace(/"/g,'&quot;');
+  let opts = multi ? '<option value="">— কার নামে? বেছে নিন —</option>' : '';
+  opts += `<option value="__own__">${escapeHtml(own||'নিজে')} (নিজে)</option>`;
+  names.filter(n=>n.toLowerCase()!==own.toLowerCase()).forEach(n=>{ opts += `<option value="${esc(n)}">${escapeHtml(n)}</option>`; });
+  opts += '<option value="__new__">➕ নতুন নাম লিখুন…</option>';
+  sel.innerHTML = opts;
+  nw.value = ''; nw.style.display = 'none';
+  let show = multi;
+  if(preName){
+    show = true;
+    if(preName.trim().toLowerCase()===own.toLowerCase()) sel.value = '__own__';
+    else if(names.some(n=>n.toLowerCase()===preName.trim().toLowerCase())) sel.value = names.find(n=>n.toLowerCase()===preName.trim().toLowerCase());
+    else { sel.value = '__new__'; nw.value = preName; nw.style.display = ''; }
+  } else if(!multi){ sel.value = '__own__'; }
+  wrap.style.display = show ? '' : 'none';
+  link.style.display = show ? 'none' : '';
+}
+function _showForPicker(pfx){
+  const wrap = document.getElementById(pfx+'ForWrap'), sel = document.getElementById(pfx+'ForSel'), link = document.getElementById(pfx+'ForLink');
+  if(wrap) wrap.style.display = ''; if(link) link.style.display = 'none'; if(sel) sel.value = '__own__';
+}
+function _forSelChange(pfx){
+  const sel = document.getElementById(pfx+'ForSel'), nw = document.getElementById(pfx+'ForNew');
+  const isNew = sel.value==='__new__';
+  nw.style.display = isNew ? '' : 'none';
+  if(isNew) nw.focus();
+}
+// ফেরত: {ok, forName, forOwn} — ok:false হলে সেভ থামাতে হবে (টোস্ট দেখানো হয়ে গেছে)
+function _readForPicker(pfx, c){
+  const wrap = document.getElementById(pfx+'ForWrap'), sel = document.getElementById(pfx+'ForSel'), nw = document.getElementById(pfx+'ForNew');
+  const own = (c.name||'').trim();
+  if(!wrap || !sel || wrap.style.display==='none') return {ok:true, forName:null, forOwn:true};
+  const v = sel.value;
+  if(!v){ toast('আগে বেছে নিন — কার নামে?'); try{ sel.focus(); }catch(e){} return {ok:false}; }
+  if(v==='__own__') return {ok:true, forName:null, forOwn:true};
+  let name = v;
+  if(v==='__new__'){ name = (nw.value||'').trim(); if(!name){ toast('নতুন নামটা লিখুন'); try{ nw.focus(); }catch(e){} return {ok:false}; } }
+  if(name.toLowerCase()===own.toLowerCase()) return {ok:true, forName:null, forOwn:true};
+  return {ok:true, forName:name, forOwn:false};
+}
 function openAdjustDueModal(id, forName){
   adjustingCustomerId = id;
   _adjForName = forName || null;
   const c = customers.find(x=>x.id===id);
-  document.getElementById('adjustCustName').textContent = c.name + (_adjForName ? ' — নামে: '+_adjForName : '');
+  document.getElementById('adjustCustName').textContent = c.name;
+  _setupForPicker('adj', c, _adjForName);
   document.getElementById('adjustCurrentDue').textContent = fmt(c.due||0);
   document.getElementById('adjustAmount').value = '';
   openModal('adjustDueModalBackdrop');
@@ -891,6 +950,7 @@ function saveAdjustDue(){
   if(!c) return;
   const amount = parseFloat(document.getElementById('adjustAmount').value)||0;
   if(amount<=0){ toast('সঠিক পরিমাণ দিন'); return; }
+  const _fpA = _readForPicker('adj', c); if(!_fpA.ok) return;
   c.due = (c.due||0) + amount;
   save(DB_KEYS.customer, customers);
   // Record a permanent ledger entry (type:'due_adjustment') so this manual বাকি shows up in the
@@ -898,7 +958,7 @@ function saveAdjustDue(){
   const adjId = uid();
   const adjTs = Date.now();
   const _adjRec = { customerId:c.id, amount, ts:adjTs, date:todayStr(), type:'due_adjustment' };
-  if(_adjForName) _adjRec.forName = _adjForName;
+  if(_fpA.forName) _adjRec.forName = _fpA.forName; else if(_fpA.forOwn) _adjRec.forOwn = true;
   payments.push(Object.assign({ id:adjId }, _adjRec));
   save(DB_KEYS.payment, payments);
   closeModal('adjustDueModalBackdrop'); toast('বাকি যোগ করা হয়েছে ✓'); renderCustomers(); renderDashboard();
@@ -916,7 +976,8 @@ function openPaymentModal(id, forName){
   _payForName = forName || null;
   reconcileOne(id);
   const c = customers.find(x=>x.id===id);
-  document.getElementById('paymentCustName').textContent = c.name + (_payForName ? ' — নামে: '+_payForName : '');
+  document.getElementById('paymentCustName').textContent = c.name;
+  _setupForPicker('pay', c, _payForName);
   document.getElementById('paymentCurrentDue').textContent = dueText(c.due);
   document.getElementById('paymentAmount').value = '';
   openModal('paymentModalBackdrop');
@@ -926,6 +987,7 @@ function savePayment(){
   if(!c) return;
   const amount = parseFloat(document.getElementById('paymentAmount').value)||0;
   if(amount<=0){ toast('সঠিক পরিমাণ দিন'); return; }
+  const _fpP = _readForPicker('pay', c); if(!_fpP.ok) return;
   reconcileOne(c.id); // জমা নেওয়ার ঠিক আগে ইতিহাস থেকে সঠিক বাকি বসিয়ে নিই
   if((c.due||0)<=0){
     if(!confirm('এই কাস্টমারের এখন কোনো বাকি নেই'+((c.due||0)<0?' (আগে থেকেই '+fmt(-c.due)+' অগ্রিম জমা আছে)':'')+'।\n\n'+fmt(amount)+' অগ্রিম হিসেবে জমা রাখবেন?')) return;
@@ -941,7 +1003,7 @@ function savePayment(){
   const paymentId = uid();
   const _payTs = Date.now();
   const _payRec = Object.assign({ customerId:c.id, amount, ts:_payTs, date:todayStr() }, sellerFields());
-  if(_payForName) _payRec.forName = _payForName;
+  if(_fpP.forName) _payRec.forName = _fpP.forName; else if(_fpP.forOwn) _payRec.forOwn = true;
   { const _ch = (document.getElementById('paymentChannel')||{}).value || 'cash'; if(_ch!=='cash') _payRec.channel = _ch; }   // বিকাশ/নগদ... হলে ক্যাশ বাক্সে ধরা হয় না
   payments.push(Object.assign({ id:paymentId }, _payRec));
   save(DB_KEYS.payment, payments);
@@ -972,9 +1034,10 @@ function _ledgerBreakdownHtml(c, custSales, custPayments){
   let loosePaid = 0, looseAdd = 0;
   const looseList = [];
   custPayments.forEach(p=>{
-    if(!p.forName && p.id) looseList.push(p);
-    if(p.type==='due_adjustment'){ if(p.forName) slot(p.forName).taken += p.amount; else looseAdd += p.amount; }
-    else { if(p.forName) slot(p.forName).paid += p.amount; else loosePaid += p.amount; }
+    const _nm = p.forName || (p.forOwn ? own : '');
+    if(!_nm && p.id) looseList.push(p);
+    if(p.type==='due_adjustment'){ if(_nm) slot(_nm).taken += p.amount; else looseAdd += p.amount; }
+    else { if(_nm) slot(_nm).paid += p.amount; else loosePaid += p.amount; }
   });
   const people = [...map.values()].filter(p=>p.isOwn || p.taken>0 || p.paid>0)
     .sort((a,b)=> (b.isOwn?1:0)-(a.isOwn?1:0) || (b.taken-b.paid)-(a.taken-a.paid));
@@ -1021,9 +1084,14 @@ function _lbAssign(pid, name){
 let _ledgerNames = [];
 // মালিক চাইলে যেকোনো জমা/বাকি-যোগ এন্ট্রির "কার নামে" বদলাতে পারবেন (মোট বাকি বদলায় না, শুধু নামের ভাগ)
 function _reassignSel(e){
-  if(currentRole()!=='owner' || !e.id || !_ledgerNames.length) return '';
+  if(currentRole()!=='owner' || !e.id || _ledgerNames.length<2) return '';   // একটাই নাম থাকলে বদলানোর কিছু নেই
   const opts = _ledgerNames.map(n=>`<option value="${escapeHtml(n).replace(/"/g,'&quot;')}">${escapeHtml(n)}</option>`).join('');
   return `<div onclick="event.stopPropagation()" style="margin-top:4px;"><select onchange="_lbReassign('${e.id}',this.value)" style="max-width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:8px;font-size:12px;"><option value="">✎ কার নামে — বদলান</option>${opts}</select></div>`;
+}
+// একাধিক নাম থাকলে প্রতিটা এন্ট্রিতে কার নামে তা দেখায় (নিজের নামেরটাও); একটাই নাম হলে কিছু দেখায় না
+function _forLbl(e, c){
+  const nm = e.forName || ((e.forOwn && _ledgerNames.length>=2) ? (c.name||'').trim() : '');
+  return nm ? ' • নামে: <b>'+escapeHtml(nm)+'</b>' : '';
 }
 function _lbReassign(pid, name){
   if(!name) return;
@@ -1049,7 +1117,7 @@ function showLedger(custId){
     [c.name, ...custSales.map(s=>s.patientName), ...custPayments.map(p=>p.forName)].forEach(n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); _ledgerNames.push(n); } }); }
   const events = [
     ...custSales.map(s=>({ts:s.ts, type:'sale', id:s.id, items:s.items, total:s.total, cash:s.cashPaidNow??s.total, due:s.dueAdded??0, rxId:s.rxId||null, patientName:s.patientName||null})),
-    ...custPayments.map(p=>({ts:p.ts, type:(p.type==='due_adjustment'?'adjust':'payment'), amount:p.amount, forName:p.forName||null, id:p.id||null}))
+    ...custPayments.map(p=>({ts:p.ts, type:(p.type==='due_adjustment'?'adjust':'payment'), amount:p.amount, forName:p.forName||null, forOwn:!!p.forOwn, id:p.id||null}))
   ].sort((a,b)=>a.ts-b.ts);
   let running = 0;
   const rowsHtml = events.map(e=>{
@@ -1091,9 +1159,9 @@ function showLedger(custId){
       </div>`;
     }
     if(e.type==='adjust'){
-      return `<div class="row-item"><div><div class="row-title">বাকি যোগ করা হয়েছে (ম্যানুয়াল)</div><div class="row-sub">${dt}${e.forName?' • নামে: <b>'+escapeHtml(e.forName)+'</b>':''}</div>${_reassignSel(e)}</div><div class="row-right"><span class="badge badge-gold">+${fmt(e.amount)}</span><div class="row-sub" style="margin-top:3px;">বাকি: ${dueText(running)}</div></div></div>`;
+      return `<div class="row-item"><div><div class="row-title">বাকি যোগ করা হয়েছে (ম্যানুয়াল)</div><div class="row-sub">${dt}${_forLbl(e,c)}</div>${_reassignSel(e)}</div><div class="row-right"><span class="badge badge-gold">+${fmt(e.amount)}</span><div class="row-sub" style="margin-top:3px;">বাকি: ${dueText(running)}</div></div></div>`;
     }
-    return `<div class="row-item"><div><div class="row-title">টাকা জমা নিয়েছেন</div><div class="row-sub">${dt}${e.forName?' • নামে: <b>'+escapeHtml(e.forName)+'</b>':''}</div>${_reassignSel(e)}</div><div class="row-right"><span class="badge badge-green">-${fmt(e.amount)}</span><div class="row-sub" style="margin-top:3px;">বাকি: ${dueText(running)}</div></div></div>`;
+    return `<div class="row-item"><div><div class="row-title">টাকা জমা নিয়েছেন</div><div class="row-sub">${dt}${_forLbl(e,c)}</div>${_reassignSel(e)}</div><div class="row-right"><span class="badge badge-green">-${fmt(e.amount)}</span><div class="row-sub" style="margin-top:3px;">বাকি: ${dueText(running)}</div></div></div>`;
   });
   // The running-বাকি balance above has to be computed oldest→newest (each entry depends on the
   // one before it) — but the person wants to actually SEE the newest transaction first, so the
@@ -1122,10 +1190,13 @@ function showLedger(custId){
   document.getElementById('ledgerCurrentDue').textContent = dueText(c.due);
   if(_lbCust !== custId){ _lbCust = custId; _lbOpen = false; }
   let panel = '';
-  try{ panel = _lbOpen ? _ledgerBreakdownHtml(c, custSales, custPayments) : ''; }catch(e){ console.error(e); }
+  try{ panel = (_lbOpen && _ledgerNames.length>=2) ? _ledgerBreakdownHtml(c, custSales, custPayments) : ''; }catch(e){ console.error(e); }
   try{
     const dueEl = document.getElementById('ledgerCurrentDue'); const card = dueEl && dueEl.parentElement;
-    if(card){
+    if(card && _ledgerNames.length<2){   // একটাই নাম — "কার নামে কত বাকি" ভাগ করার কিছু নেই
+      card.style.cursor = ''; card.onclick = null;
+      const _h0 = card.querySelector('.lb-hint'); if(_h0) _h0.remove();
+    } else if(card){
       card.style.cursor = 'pointer'; card.onclick = ()=>{ _lbOpen = !_lbOpen; showLedger(custId); };
       let hint = card.querySelector('.lb-hint');
       if(!hint){ hint = document.createElement('div'); hint.className = 'lb-hint row-sub'; hint.style.cssText='margin-top:4px;font-size:12px;color:#067647;'; card.appendChild(hint); }

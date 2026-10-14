@@ -93,12 +93,70 @@ function _profitCalc(sList, ltList){
   return { sale, profit: sale - cost - t.price + t.profit };
 }
 function _expensesIn(fn){ return payments.filter(p=>p.type==='expense' && fn(p.date)); }
+// ===== দোকানের খরচ: খাত অনুযায়ী হিসাব (এই মাস / গত মাস / এই বছর / সর্বমোট / নিজের তারিখ) =====
+const EXP_CATS = ['চা-নাস্তা','বেতন','দোকান ভাড়া','বিদ্যুৎ/ইন্টারনেট বিল','যাতায়াত','অন্যান্য'];
+let _expP = 'month', _expFrom = '', _expTo = '', _expCat = null, _expSelCat = '';
+// খাত: নতুন খরচে cat সেভ থাকে। আগের খরচে নোট যদি খাতের নামের সমান হয় সেটাই খাত, নইলে "অন্যান্য"।
+function _expCatOf(p){
+  if(p.cat) return p.cat;
+  const n = (p.note||'').trim();
+  return EXP_CATS.includes(n) ? n : 'অন্যান্য';
+}
+function _expRange(){
+  const t = todayStr();
+  if(_expP==='month') return [t.slice(0,7)+'-01', t.slice(0,7)+'-31'];
+  if(_expP==='lastmonth'){ const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); const m = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); return [m+'-01', m+'-31']; }
+  if(_expP==='year') return [t.slice(0,4)+'-01-01', t.slice(0,4)+'-12-31'];
+  if(_expP==='custom') return [_expFrom||'0000-00-00', _expTo||'9999-99-99'];
+  return ['0000-00-00','9999-99-99'];
+}
 function showReportExpenses(){
-  const range = document.getElementById('reportRange').value;
-  const list = _expensesIn(d=>inRange(d, range)).sort((a,b)=>(b.ts||0)-(a.ts||0));
+  const r = (document.getElementById('reportRange')||{}).value;
+  _expP = r==='all' ? 'all' : r==='custom' ? 'custom' : 'month';
+  if(_expP==='custom'){ _expFrom = (document.getElementById('reportCustomFrom')||{}).value||''; _expTo = (document.getElementById('reportCustomTo')||{}).value||''; }
+  _expCat = null; showExpenseSummary(true);
+}
+function _expSet(p){ _expP = p; _expCat = null; showExpenseSummary(true); }
+function _expSetDate(which, v){ if(which==='from') _expFrom = v; else _expTo = v; showExpenseSummary(true); }
+function _expToggle(c){ _expCat = (_expCat===c) ? null : c; showExpenseSummary(true); }
+function showExpenseSummary(keep){
+  if(keep!==true){ _expP = 'month'; _expCat = null; }
+  const [from, to] = _expRange();
+  const list = payments.filter(p=>p.type==='expense' && p.date && p.date>=from && p.date<=to);
   const total = list.reduce((a,p)=>a+(p.amount||0),0);
-  document.getElementById('detailModalTitle').textContent = 'দোকানের খরচ ('+list.length+'টা) • '+fmt(total);
-  document.getElementById('detailModalContent').innerHTML = list.map(p=>`<div class="row-item"><div><div class="row-title">${escapeHtml(p.note||'খরচ')}</div><div class="row-sub">${p.date}</div></div><div class="row-right"><div class="row-title" style="color:#b42318;">${fmt(p.amount)}</div></div></div>`).join('') || '<div class="empty-state">এই সময়কালে কোনো খরচ লেখা নেই</div>';
+  const cats = {};
+  list.forEach(p=>{ const c = _expCatOf(p); (cats[c] = cats[c] || {name:c, sum:0, n:0, items:[]}); cats[c].sum += (p.amount||0); cats[c].n++; cats[c].items.push(p); });
+  const catArr = Object.values(cats).sort((a,b)=>b.sum-a.sum);
+  const mNames = ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
+  const chip = (k,l)=>`<button type="button" class="btn btn-sm ${_expP===k?'btn-primary':'btn-outline'}" onclick="_expSet('${k}')">${l}</button>`;
+  const entry = p=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px dotted #ddd;"><div style="min-width:0;overflow-wrap:anywhere;"><div>${escapeHtml(p.note||p.cat||'খরচ')}</div><div class="row-sub">${p.date}</div></div><b style="color:#b42318;white-space:nowrap;">${fmt(p.amount)}</b></div>`;
+  const catRows = catArr.map(c=>{
+    const pct = total>0 ? Math.round(c.sum*100/total) : 0;
+    const open = (_expCat===c.name);
+    const items = open ? `<div style="margin:6px 0 4px 6px;">${c.items.slice().sort((a,b)=>(b.ts||0)-(a.ts||0)).map(entry).join('')}</div>` : '';
+    return `<div style="padding:9px 0;border-bottom:1px dashed #d9d9d9;cursor:pointer;" onclick="_expToggle(this.dataset.c)" data-c="${escapeHtml(c.name).replace(/"/g,'&quot;')}">
+      <div style="display:flex;justify-content:space-between;gap:8px;"><div style="font-weight:700;">${escapeHtml(c.name)} <span class="row-sub">(${c.n}টা • ${pct}%)</span></div><b style="color:#b42318;">${fmt(c.sum)}</b></div>
+      <div style="height:7px;border-radius:6px;background:#fdecea;margin-top:5px;overflow:hidden;"><div style="height:100%;width:${Math.max(pct,2)}%;background:#d9534f;"></div></div>${items}</div>`;
+  }).join('');
+  // মাস ধরে ভাগ — বছর/সর্বমোট/কাস্টম দেখলে
+  let monthHtml = '';
+  if(_expP!=='month' && _expP!=='lastmonth'){
+    const ms = {}; list.forEach(p=>{ const k = p.date.slice(0,7); ms[k] = (ms[k]||0) + (p.amount||0); });
+    const keys = Object.keys(ms).sort().reverse();
+    if(keys.length>1) monthHtml = `<div style="margin-top:14px;font-weight:800;">মাস অনুযায়ী</div>` + keys.map(k=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dotted #ddd;"><span>${mNames[parseInt(k.slice(5,7))-1]} ${k.slice(0,4)}</span><b style="color:#b42318;">${fmt(ms[k])}</b></div>`).join('');
+  }
+  const allOpen = (_expCat==='*');
+  const allHtml = list.length ? `<div style="margin-top:14px;"><button type="button" class="btn btn-outline btn-block" onclick="_expToggle('*')">${allOpen?'▲ তারিখ অনুযায়ী তালিকা লুকান':'📋 সব খরচ তারিখ অনুযায়ী দেখুন'}</button>${allOpen?`<div style="margin-top:6px;">${list.slice().sort((a,b)=>(b.ts||0)-(a.ts||0)).map(p=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px dotted #ddd;"><div style="min-width:0;overflow-wrap:anywhere;"><div>${escapeHtml(p.note||p.cat||'খরচ')}</div><div class="row-sub">${p.date} • ${escapeHtml(_expCatOf(p))}</div></div><b style="color:#b42318;white-space:nowrap;">${fmt(p.amount)}</b></div>`).join('')}</div>`:''}</div>` : '';
+  const customHtml = _expP==='custom' ? `<div style="display:flex;gap:8px;margin-top:8px;"><div style="flex:1;"><label style="font-size:11.5px;">শুরু</label><input type="date" value="${_expFrom}" onchange="_expSetDate('from',this.value)"></div><div style="flex:1;"><label style="font-size:11.5px;">শেষ</label><input type="date" value="${_expTo}" onchange="_expSetDate('to',this.value)"></div></div>` : '';
+  document.getElementById('detailModalTitle').textContent = '💸 দোকানের খরচের হিসাব';
+  document.getElementById('detailModalContent').innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">${chip('month','এই মাস')}${chip('lastmonth','গত মাস')}${chip('year','এই বছর')}${chip('all','সর্বমোট')}${chip('custom','তারিখ বেছে নিন')}</div>${customHtml}
+    <div style="margin-top:10px;padding:12px;border-radius:12px;background:#fdecea;border:1px solid #f3c7c2;">
+      <div class="row-sub">মোট খরচ • ${list.length}টা এন্ট্রি</div>
+      <div style="font-size:24px;font-weight:800;color:#b42318;">${fmt(total)}</div></div>
+    <div style="margin-top:12px;font-weight:800;">খাত অনুযায়ী <span class="row-sub" style="font-weight:400;">(চাপলে ওই খাতের খরচগুলো দেখা যায়)</span></div>
+    ${catRows || '<div class="empty-state">এই সময়কালে কোনো খরচ লেখা নেই</div>'}${monthHtml}${allHtml}
+    <div class="row-sub" style="margin-top:10px;line-height:1.5;">খরচ লেখা হয় ক্যাশ হিসাব (ড্যাশবোর্ডের ক্যাশ কার্ড) থেকে। নতুন খরচে খাতের বাটন চেপে লিখলে এখানে সঠিক খাতে আসে; আগের যেসব খরচে খাত বাছা ছিল না সেগুলো "অন্যান্য"-তে দেখায়।</div>`;
   openModal('detailModalBackdrop');
 }
 function showProfitHistory(){
@@ -183,6 +241,7 @@ function updateCashTile(){
 }
 function showCashBook(d){
   d = (typeof d==='string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? d : todayStr();
+  _expSelCat = '';
   const r = computeCashDay(d);
   const open = _cashGet('open', d), counted = _cashGet('count', d);
   const expected = (open||0) + r.net;
@@ -226,12 +285,13 @@ function showCashBook(d){
     ${expRows}
     <div style="margin-top:8px;padding:10px;border:1px dashed #c9d6cf;border-radius:12px;">
       <div style="font-weight:700;margin-bottom:6px;">+ খরচ লিখুন</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${['চা-নাস্তা','বেতন','দোকান ভাড়া','বিদ্যুৎ/ইন্টারনেট বিল','যাতায়াত','অন্যান্য'].map(c=>`<button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('expNote').value='${c}'">${c}</button>`).join('')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">${EXP_CATS.map(c=>`<button type="button" class="btn btn-sm btn-outline expCatBtn" data-c="${c}" onclick="pickExpCat(this.dataset.c)">${c}</button>`).join('')}</div>
       <div style="display:flex;gap:6px;">
         <input type="number" inputmode="decimal" id="expAmt" placeholder="টাকা" style="flex:1;min-width:0;">
-        <input type="text" id="expNote" placeholder="কীসের খরচ" style="flex:2;min-width:0;">
+        <input type="text" id="expNote" placeholder="কীসের খরচ (ঐচ্ছিক)" style="flex:2;min-width:0;">
       </div>
       <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="addExpense('${d}')">খরচ যোগ করুন</button>
+      <button type="button" class="btn btn-outline btn-block" style="margin-top:8px;" onclick="showExpenseSummary()">📊 খাত অনুযায়ী সব খরচ (মাস/বছর/সর্বমোট)</button>
     </div>
     <div style="margin-top:14px;padding:12px;border-radius:12px;background:#f1f6f3;border:1px solid #d6e4dc;">
       <div style="display:flex;justify-content:space-between;font-weight:800;font-size:17px;"><span>ক্যাশে থাকার কথা</span><span id="cashExpVal">${fmt(expected)}</span></div>
@@ -246,15 +306,21 @@ function showCashBook(d){
     <div class="row-sub" style="margin-top:10px;line-height:1.5;">নোট: খরচ লিখলে ক্যাশের হিসাবে বাদ যায় (ক্লাউডেও সেভ হয়)। "আজকের নিট লাভ" কার্ডে এই খরচ বাদ ধরা হয়। শুরুর ও গুনে পাওয়া ক্যাশ শুধু এই ফোনে সেভ থাকে।</div>`;
   openModal('detailModalBackdrop');
 }
+function pickExpCat(c){
+  _expSelCat = (_expSelCat===c) ? '' : c;
+  document.querySelectorAll('.expCatBtn').forEach(b=>{ const on = (b.dataset.c===_expSelCat); b.style.background = on ? '#1f5c46' : ''; b.style.color = on ? '#fff' : ''; });
+}
 function addExpense(d){
   const amt = parseFloat(document.getElementById('expAmt').value);
-  const note = (document.getElementById('expNote').value||'').trim();
+  const detail = (document.getElementById('expNote').value||'').trim();
+  const cat = _expSelCat || '';
   if(!(amt>0)){ toast('খরচের টাকা লিখুন'); return; }
-  if(!note){ toast('কীসের খরচ লিখুন (বা উপরের বাটন চাপুন)'); return; }
+  if(!cat && !detail){ toast('কোন খাতে খরচ — উপরের বাটন চাপুন (বা কীসের খরচ লিখুন)'); return; }
+  const note = (cat && detail) ? cat+': '+detail : (detail || cat);
   const isToday = (d===todayStr());
   const ts = isToday ? Date.now() : new Date(d+'T12:00:00').getTime();
   const id = uid();
-  const rec = Object.assign({ customerId:undefined, amount:amt, ts, date:d, type:'expense', note }, sellerFields());
+  const rec = Object.assign({ customerId:undefined, amount:amt, ts, date:d, type:'expense', note, cat: (cat || 'অন্যান্য') }, sellerFields());
   delete rec.customerId;
   payments.push(Object.assign({id}, rec));
   save(DB_KEYS.payment, payments);

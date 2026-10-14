@@ -312,6 +312,7 @@
         <div class="stat accent" onclick="showProfitHistory()" style="cursor:pointer;"><div class="label">নিট লাভ (খরচ বাদে) ▸ ইতিহাস</div><div class="value" id="rNet">৳০</div></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px;">
+        <button class="btn btn-outline" style="flex:1;min-width:150px;" onclick="showExpenseSummary()">💸 খরচের হিসাব (খাত অনুযায়ী)</button>
         <button class="btn btn-outline" style="flex:1;min-width:150px;" onclick="showOrderList()">🛒 কম স্টকের অর্ডার তালিকা</button>
         <button class="btn btn-outline" style="flex:1;min-width:150px;" onclick="showDeadStock()">🕸️ অনেকদিন বিক্রি হয়নি</button>
       </div>
@@ -393,6 +394,12 @@
         <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="renderAuditLog(); openModal('auditModalBackdrop')">🕵️ পরিবর্তনের লগ দেখুন</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="renderTrash(); openModal('trashModalBackdrop')">🗑️ রিসাইকেল বিন (মোছা তথ্য ফেরান)</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="recoverMissingCustomers()">🧩 হারানো কাস্টমার উদ্ধার (বিক্রয়ের হিসাব থেকে)</button>
+      </div>
+
+      <h3 class="section-h"><span class="dot"></span>দোকানের খরচ <span class="tag-en">Expenses</span></h3>
+      <div class="card">
+        <div class="row-sub">কোন খাতে কত খরচ করলেন — এই মাস, গত মাস, এই বছর, সর্বমোট বা নিজের বেছে নেওয়া তারিখে।</div>
+        <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="showExpenseSummary()">💸 খরচের হিসাব দেখুন (খাত অনুযায়ী)</button>
       </div>
 
       <h3 class="section-h"><span class="dot"></span>পুরনো ইতিহাস আর্কাইভ <span class="tag-en">Archive Old History</span></h3>
@@ -865,6 +872,12 @@ Fexo 120mg
     <div class="modal-head"><h4>টাকা জমা নিন</h4><button class="modal-close" onclick="closeModal('paymentModalBackdrop')">✕</button></div>
     <div class="row-sub">কাস্টমার: <b id="paymentCustName"></b></div>
     <div class="row-sub" style="margin-top:2px;">বর্তমান বাকি: <b id="paymentCurrentDue"></b></div>
+    <div id="payForWrap" style="display:none;margin-top:8px;">
+      <label>কার নামে জমা নিচ্ছেন? *</label>
+      <select id="payForSel" onchange="_forSelChange('pay')"></select>
+      <input type="text" id="payForNew" placeholder="নতুন নামটা লিখুন" style="display:none;margin-top:6px;">
+    </div>
+    <a id="payForLink" onclick="_showForPicker('pay')" style="display:none;margin-top:6px;font-size:13px;color:var(--primary-dark,#1f5c46);cursor:pointer;text-decoration:underline;">অন্য কারো নামে ধরবেন?</a>
     <label>এখন কত টাকা দিলেন? *</label>
     <input type="number" id="paymentAmount" min="0" placeholder="৳">
     <label style="margin-top:8px;">টাকা কীভাবে পেলেন</label>
@@ -880,6 +893,12 @@ Fexo 120mg
     <div class="modal-head"><h4>বাকি যোগ করুন</h4><button class="modal-close" onclick="closeModal('adjustDueModalBackdrop')">✕</button></div>
     <div class="row-sub">কাস্টমার: <b id="adjustCustName"></b></div>
     <div class="row-sub" style="margin-top:2px;">বর্তমান বাকি: <b id="adjustCurrentDue"></b></div>
+    <div id="adjForWrap" style="display:none;margin-top:8px;">
+      <label>কার নামে বাকি যোগ করছেন? *</label>
+      <select id="adjForSel" onchange="_forSelChange('adj')"></select>
+      <input type="text" id="adjForNew" placeholder="নতুন নামটা লিখুন" style="display:none;margin-top:6px;">
+    </div>
+    <a id="adjForLink" onclick="_showForPicker('adj')" style="display:none;margin-top:6px;font-size:13px;color:var(--primary-dark,#1f5c46);cursor:pointer;text-decoration:underline;">অন্য কারো নামে ধরবেন?</a>
     <div class="row-sub" style="margin-top:8px;">এটা ব্যবহার করুন যখন কোনো পুরনো বাকি (যেমন ভুলে ওয়াক-ইন কাস্টমার হিসেবে দেওয়া) এই কাস্টমারের নামে ম্যানুয়ালি যোগ করতে চান।</div>
     <label>কত টাকা বাকি যোগ করবেন? *</label>
     <input type="number" id="adjustAmount" min="0" placeholder="৳">

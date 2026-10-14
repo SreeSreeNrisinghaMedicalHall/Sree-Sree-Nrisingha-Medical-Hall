@@ -772,6 +772,8 @@ async function restoreArchivedHistory(){
     purchases = [...cloudPurchases, ...localOnlyPurchases];
     _persistRaw(DB_KEYS.sale, sales);
     _persistRaw(DB_KEYS.purchase, purchases);
+    // পুরো ইতিহাস এখন ফোনে ফিরেছে — তাই "এই ফোনে আর্কাইভ হয়েছে" চিহ্নটা তুলে দিই (নইলে বাকির স্বয়ংক্রিয় মেলানো বন্ধ থেকে যেত আর অ্যাপ খোলায় শুধু ১ বছরের ইতিহাস পড়ত)
+    try{ localStorage.removeItem('ssn_archived_any'); }catch(e){}
     toast('✓ পুরনো ইতিহাস আবার ফিরিয়ে আনা হয়েছে');
     autoRecoverMissingCustomers('restoreArchivedHistory');
     renderDashboard(); rerenderCurrentSection();
