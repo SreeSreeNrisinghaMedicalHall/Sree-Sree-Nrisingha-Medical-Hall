@@ -569,6 +569,7 @@ async function attachRealtimeListeners(){
     if(_liveByName[c.name]){ try{ _liveByName[c.name](); }catch(e){} }
     let first = true;
     const unsub = query.onSnapshot(snapshot=>{
+      try{ if(!snapshot.metadata.fromCache) deltaCountReads(snapshot.docChanges().length); }catch(e){}   // আগের পদ্ধতিতেও পড়া গোনা হয়
       if(first){ first = false; try{ if(!snapshot.metadata.fromCache) deltaCountReads(snapshot.size); }catch(e){} }
       _applyRecs(c, snapshot.docs.map(d=>deltaRec(d)), true);
     }, onSnapErr);
@@ -601,7 +602,7 @@ async function attachRealtimeListeners(){
       if(changed && currentRole()==='owner'){ _applyCostMap(medicines); save(DB_KEYS.med, medicines, true); scheduleRerender(); }
     };
     const legacyCosts = ()=>{
-      const cu = shopColl('medicineCosts').onSnapshot(snap=>applyCostDocs(snap.docs), ()=>{ /* কর্মচারীর লগইনে অনুমতি নেই — এটাই স্বাভাবিক, চুপচাপ থাকবে */ });
+      const cu = shopColl('medicineCosts').onSnapshot(snap=>{ try{ if(!snap.metadata.fromCache) deltaCountReads(snap.docChanges().length); }catch(e){} applyCostDocs(snap.docs); }, ()=>{ /* কর্মচারীর লগইনে অনুমতি নেই — এটাই স্বাভাবিক, চুপচাপ থাকবে */ });
       liveListeners.push(cu);
     };
     if(deltaEnabled() && currentRole()==='owner'){

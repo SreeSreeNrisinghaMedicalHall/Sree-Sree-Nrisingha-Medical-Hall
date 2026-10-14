@@ -108,7 +108,47 @@ function deltaCountReads(n){
     let o = null; try{ o = JSON.parse(localStorage.getItem('ssn_dl_reads')); }catch(e){}
     if(!o || o.d!==day) o = {d:day, n:0};
     o.n += n; localStorage.setItem('ssn_dl_reads', JSON.stringify(o));
+    _reportReadsSoon();
   }catch(e){}
+}
+// v29: প্রতিটা ফোন (কর্মচারীরটাও) নিজের আজকের পড়ার সংখ্যা নিজের ডিভাইস-ডকুমেন্টে লেখে (রুলস বদলানো লাগে না — devices/{token} সবাই লিখতে পারে);
+// মালিক সেটিংসে সব ফোনের যোগফল দেখেন। ৫ মিনিটে সর্বোচ্চ একবার লেখে, যাতে লেখার খরচ না বাড়ে।
+let _rdTimer = null, _rdLast = 0;
+function _reportReadsSoon(){
+  try{
+    if(_rdTimer) return;
+    const wait = Math.max(3000, 5*60*1000 - (Date.now()-_rdLast));
+    _rdTimer = setTimeout(_reportReads, wait);
+  }catch(e){}
+}
+async function _reportReads(){
+  _rdTimer = null;
+  try{
+    const shop = localStorage.getItem('ssn_shop_code'), token = localStorage.getItem('ssn_device_token');
+    if(!shop || !token || typeof cloudDb==='undefined' || !cloudDb) return;
+    const o = JSON.parse(localStorage.getItem('ssn_dl_reads')); if(!o) return;
+    _rdLast = Date.now();
+    await cloudDb.collection('pharmacies').doc(shop).collection('devices').doc(token).set({reads:{d:o.d, n:o.n}, readsAt:Date.now()}, {merge:true});
+  }catch(e){ console.warn('পড়ার সংখ্যা ক্লাউডে যায়নি', e); }
+}
+let _allReadsCache = {at:0, text:''};
+async function _allPhonesReadsText(){
+  try{
+    if(typeof currentRole!=='function' || currentRole()!=='owner') return '';
+    const shop = localStorage.getItem('ssn_shop_code');
+    if(!shop || typeof cloudDb==='undefined' || !cloudDb) return '';
+    if(Date.now()-_allReadsCache.at < 60000) return _allReadsCache.text;
+    await _reportReads();   // নিজের সর্বশেষ সংখ্যাও ঢুকিয়ে নিই
+    const snap = await cloudDb.collection('pharmacies').doc(shop).collection('devices').get({source:'server'});
+    const day = new Date().toISOString().slice(0,10), me = localStorage.getItem('ssn_device_token');
+    let total = 0; const parts = [];
+    snap.docs.forEach(d=>{
+      const x = d.data(); const n = (x.reads && x.reads.d===day) ? x.reads.n : 0;
+      total += n; parts.push((x.name && x.name!=='নতুন ডিভাইস' ? x.name : (x.role==='staff'?'কর্মচারীর ফোন':'মালিকের ফোন')) + (d.id===me?' (এই ফোন)':'') + ': ' + n);
+    });
+    const t = '\nসব ফোন মিলিয়ে আজ আনুমানিক ' + total + 'টা (' + parts.join(' • ') + ')';
+    _allReadsCache = {at:Date.now(), text:t}; return t;
+  }catch(e){ return ''; }
 }
 
 // ---------- মূল ইঞ্জিন ----------
@@ -154,7 +194,9 @@ function updateDeltaSyncUi(){
   btn.textContent = on ? '⚡ দ্রুত সিঙ্ক: চালু আছে — সব ফোনে (বন্ধ করতে চাপুন)' : '⚡ দ্রুত সিঙ্ক চালু করুন (সব ফোনে)';
   let reads = 0; try{ const o = JSON.parse(localStorage.getItem('ssn_dl_reads')); if(o && o.d===new Date().toISOString().slice(0,10)) reads = o.n; }catch(e){}
   let last = ''; try{ const m = JSON.parse(localStorage.getItem('ssn_dl_meta_customers')||localStorage.getItem('ssn_dl_meta_medicines')); if(m) last = new Date(m.at).toLocaleDateString('en-GB'); }catch(e){}
-  info.textContent = (on ? 'চালু' : 'বন্ধ (পুরনো পদ্ধতি)') + ' • আজ এই ফোনে ক্লাউড থেকে পড়া হয়েছে আনুমানিক ' + reads + 'টা' + (last ? ' • শেষ পুরো মেলানো: ' + last : '');
+  const base = (on ? 'চালু' : 'বন্ধ (পুরনো পদ্ধতি)') + ' • আজ এই ফোনে ক্লাউড থেকে পড়া হয়েছে আনুমানিক ' + reads + 'টা' + (last ? ' • শেষ পুরো মেলানো: ' + last : '');
+  info.textContent = base;
+  _allPhonesReadsText().then(t=>{ if(t){ info.textContent = base + t; info.style.whiteSpace = 'pre-line'; } });
 }
 function toggleDeltaSync(){
   const on = !deltaEnabled();

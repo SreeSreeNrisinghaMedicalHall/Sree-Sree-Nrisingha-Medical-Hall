@@ -173,6 +173,7 @@ function attachPhotoListener(){
   try{
     const coll = shopColl('photos'); let first = true;
     _photoUnsub = coll.onSnapshot(snap=>{
+      try{ if(!snap.metadata.fromCache) deltaCountReads(snap.docChanges().length); }catch(e){}   // ছবির ডকুমেন্ট পড়াও গোনা হয়
       let changed = false;
       snap.docChanges().forEach(ch=>{
         const id = ch.doc.id, d = ch.doc.data();
