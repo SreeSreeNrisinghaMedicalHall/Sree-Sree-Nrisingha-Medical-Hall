@@ -174,3 +174,111 @@ function deltaFullResync(){
   setTimeout(updateDeltaSyncUi, 4000);
 }
 try{ setTimeout(updateDeltaSyncUi, 1500); }catch(e){}
+
+// ---------- মোছার খবর সব ফোনে (v29) ----------
+// সমস্যা ছিল: মালিক কিছু মুছলে ক্লাউড থেকে মুছত, কিন্তু "ইচ্ছে করে মোছা" চিহ্ন থাকত শুধু মালিকের ফোনে। কর্মচারীর ফোন
+// ক্লাউডের "মোছা হয়েছে" ঘটনা উপেক্ষা করে (ডাটা হারানো ঠেকাতে ফোনের রেকর্ড রেখে দেয়), তাই মোছা কাস্টমার সেখানে থেকে যেত।
+// সমাধান: মালিক মুছলে id দোকানের মূল ডকুমেন্টের delLog-এ লেখা হয় (রুলস বদলানো লাগে না — মূল ডকুমেন্ট শুধু মালিকই লিখতে পারে)।
+// প্রতিটা ফোন সেটা পড়ে — শর্ত: ক্লাউডের সার্ভারে ওই রেকর্ড সত্যিই নেই (ফিরিয়ে আনা রেকর্ড কখনো মোছা হয় না)।
+// বিক্রি/ক্রয়ের "আর্কাইভ" এর আওতায় নেই — আর্কাইভ শুধু ওই ফোনের নিজের ব্যাপার।
+const DELLOG_KEEP_MS = 60*24*60*60*1000;
+let _dlTimer = null, _dlApplying = false;
+function _dlPendGet(){ try{ return JSON.parse(localStorage.getItem('ssn_dellog_pending'))||[]; }catch(e){ return []; } }
+function _dlPendSet(a){ try{ localStorage.setItem('ssn_dellog_pending', JSON.stringify(a)); }catch(e){} }
+function addTombstoneLogged(id){
+  addTombstone(id);
+  try{
+    if(currentRole()!=='owner') return;
+    const p = _dlPendGet();
+    if(!p.some(x=>x.id===id)) p.push({id:id, ts:Date.now()});
+    _dlPendSet(p);
+    if(_dlTimer) clearTimeout(_dlTimer);
+    _dlTimer = setTimeout(flushDeleteLog, 600);
+  }catch(e){ console.warn('মোছার খবর জমা করা যায়নি', e); }
+}
+async function flushDeleteLog(){
+  _dlTimer = null;
+  try{
+    if(currentRole()!=='owner') return;
+    const shop = localStorage.getItem('ssn_shop_code');
+    if(!shop || typeof cloudDb==='undefined' || !cloudDb) return;
+    const p = _dlPendGet(); if(!p.length) return;
+    for(let i=0;i<p.length;i+=200){
+      const chunk = p.slice(i,i+200);
+      await cloudDb.collection('pharmacies').doc(shop).set({delLog: firebase.firestore.FieldValue.arrayUnion.apply(null, chunk)}, {merge:true});
+    }
+    const sent = new Set(p.map(x=>x.id));
+    _dlPendSet(_dlPendGet().filter(x=>!sent.has(x.id)));
+  }catch(e){ console.warn('মোছার খবর ক্লাউডে যায়নি — পরে আবার চেষ্টা হবে', e); }
+}
+async function applyDeleteLog(list){
+  if(_dlApplying || !Array.isArray(list) || !list.length) return 0;
+  _dlApplying = true;
+  let removed = 0;
+  try{
+    const cur = { medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices };
+    const have = new Map();
+    LIVE_COLLECTIONS.forEach(c=>{ (cur[c.arrKey]||[]).forEach(r=>{ if(r && r.id) have.set(r.id, c); }); });
+    const cutoff = Date.now() - DELLOG_KEEP_MS;
+    const toRemove = {};   // arrKey -> Set(id)
+    for(const e of list){
+      if(!e || !e.id || (e.ts && e.ts < cutoff)) continue;
+      const c = have.get(e.id); if(!c) continue;
+      try{
+        const d = await shopColl(c.name).doc(e.id).get({source:'server'});
+        if(d && d.exists) continue;            // ক্লাউডে আছে (ফিরিয়ে আনা হয়েছে) — ছোঁয়া হবে না
+      }catch(err){ continue; }                  // অফলাইন/ত্রুটি — নিশ্চিত না হলে কিছু মোছা হবে না
+      (toRemove[c.arrKey] = toRemove[c.arrKey] || new Set()).add(e.id);
+    }
+    LIVE_COLLECTIONS.forEach(c=>{
+      const ids = toRemove[c.arrKey]; if(!ids || !ids.size) return;
+      ids.forEach(id=>addTombstone(id));        // শুধু এই ফোনে — ক্লাউডে আবার লেখা হয় না
+      const arr = (cur[c.arrKey]||[]).filter(r=>!(r && ids.has(r.id)));
+      setLiveArray(c.arrKey, arr);
+      save(c.dbKey, arr, true);
+      removed += ids.size;
+    });
+    if(removed){
+      try{ toast('🧹 মালিকের মোছা '+removed+'টা রেকর্ড এই ফোন থেকেও সরানো হয়েছে'); }catch(e){}
+      try{ rerenderCurrentSection(); }catch(e){}
+      try{ renderCustomers(); }catch(e){}
+    }
+  }catch(e){ console.error('applyDeleteLog failed', e); }
+  _dlApplying = false;
+  return removed;
+}
+function watchDeleteLog(db, shopCode){
+  const unsub = db.collection('pharmacies').doc(shopCode).onSnapshot(snap=>{
+    try{
+      if(!snap || !snap.exists) return;
+      const list = (snap.data()||{}).delLog;
+      if(Array.isArray(list) && list.length){
+        applyDeleteLog(list);
+        if(currentRole()==='owner'){
+          const keep = list.filter(e=>e && e.ts && e.ts >= Date.now()-DELLOG_KEEP_MS);
+          if(keep.length < list.length) db.collection('pharmacies').doc(shopCode).set({delLog: keep}, {merge:true}).catch(()=>{});
+        }
+      }
+      if(currentRole()==='owner' && _dlPendGet().length) flushDeleteLog();
+    }catch(e){ console.warn('delLog পড়া যায়নি', e); }
+  }, err=>console.warn('delLog শোনা যায়নি', err));
+  if(typeof liveListeners!=='undefined') liveListeners.push(unsub);
+  return unsub;
+}
+// একবারের কাজ: আগে মোছা (রিসাইকেল বিনে আছে) রেকর্ডগুলোও কর্মচারীর ফোন থেকে সরানো — যেমন আগে মোছা "H"
+async function broadcastTrashDeletes(){
+  if(!requireOwnerRole('মোছার খবর পাঠানো')) return;
+  try{
+    if(!cloudReady()){ toast('আগে ক্লাউড সংযুক্ত করুন'); return; }
+    const okKeys = new Set([DB_KEYS.customer, DB_KEYS.supplier, DB_KEYS.med, DB_KEYS.labTest, DB_KEYS.prescription, DB_KEYS.referrer, DB_KEYS.payment]);
+    const items = await HistDB.getAll('trash');
+    const ids = [...new Set(items.filter(it=>it && it.record && it.record.id && okKeys.has(it.key)).map(it=>it.record.id))];
+    if(!ids.length){ toast('রিসাইকেল বিনে এমন কিছু নেই'); return; }
+    if(!confirm('রিসাইকেল বিনে থাকা '+ids.length+'টা মোছা রেকর্ড (কাস্টমার, সাপ্লায়ার, ওষুধ ইত্যাদি) অন্য ফোন থেকেও সরানো হবে — শুধু যেগুলো ক্লাউডেও নেই। আপনার রিসাইকেল বিনের কিছু বদলাবে না। এগোবেন?')) return;
+    const p = _dlPendGet(); const have = new Set(p.map(x=>x.id)); const now = Date.now();
+    ids.forEach(id=>{ if(!have.has(id)) p.push({id:id, ts:now}); });
+    _dlPendSet(p);
+    await flushDeleteLog();
+    toast('✓ '+ids.length+'টা মোছার খবর পাঠানো হয়েছে — অন্য ফোন অ্যাপ খুললে/অনলাইনে এলে মিলে যাবে');
+  }catch(e){ console.error(e); toast('পাঠানো যায়নি'); }
+}

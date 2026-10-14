@@ -503,7 +503,7 @@ function deletePurchase(){
   const med = medicines.find(m=>m.id===p.medicineId);
   if(med) med.stock -= p.qty;
   purchases = purchases.filter(x=>x.id!==editingPurchaseId);
-  addTombstone(editingPurchaseId);
+  addTombstoneLogged(editingPurchaseId);
   save(DB_KEYS.med, medicines);
   save(DB_KEYS.purchase, purchases);
   closeModal('purchaseModalBackdrop'); toast('ক্রয় এন্ট্রি মুছে ফেলা হয়েছে'); renderPurchases(); renderDashboard();

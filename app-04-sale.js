@@ -627,7 +627,7 @@ async function deleteSaleRecord(id){
       if(cust) cust.due = (cust.due||0) - sale.dueAdded;
     }
     if(cust) save(DB_KEYS.customer, customers);
-    addTombstone(id); // MUST happen before save() below — otherwise save()'s stale-write recovery
+    addTombstoneLogged(id); // MUST happen before save() below — otherwise save()'s stale-write recovery
     // (which exists to protect against a multi-tab overwrite wiping a real record) sees this id
     // missing from the array we're about to write and pushes it right back in from what's still
     // in localStorage, undoing the delete in the same call. This was the actual reason deletes

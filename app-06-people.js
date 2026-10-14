@@ -490,7 +490,7 @@ function deleteCustomer(){
     if((_c.due||0)>0 && !askDelete(`⚠ "${_c.name}"-এর নামে ${fmt(_c.due)} বাকি আছে। মুছলে এই বাকির হিসাব কাস্টমার তালিকা থেকে হারিয়ে যাবে।\n\nতবুও মুছবেন?`)) return;
   }
   customers = customers.filter(x=>x.id!==idToDelete);
-  addTombstone(idToDelete);
+  addTombstoneLogged(idToDelete);
   save(DB_KEYS.customer, customers);
   closeModal('customerModalBackdrop'); toast('কাস্টমার মুছে ফেলা হয়েছে'); renderCustomers();
   if(cloudReady()){

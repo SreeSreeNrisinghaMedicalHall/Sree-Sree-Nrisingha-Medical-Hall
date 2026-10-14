@@ -195,7 +195,7 @@ function deleteMedicine(){
   const _m = medicines.find(x=>x.id===idToDelete);
   if(!askDelete(`"${_m?_m.name:'এই ওষুধ'}" মুছে ফেলবেন?\n\nমুছলেও রিসাইকেল বিন থেকে ফেরানো যাবে।`)) return;
   medicines = medicines.filter(x=>x.id!==idToDelete);
-  addTombstone(idToDelete);
+  addTombstoneLogged(idToDelete);
   save(DB_KEYS.med, medicines);
   closeModal('medModalBackdrop'); toast('ওষুধ মুছে ফেলা হয়েছে'); renderMedicines(); renderDashboard();
   if(cloudReady()){
@@ -578,7 +578,7 @@ function deleteSelectedMedicines(){
   if(!confirm(`${selectedMedIds.size}টা ওষুধ মুছে ফেলবেন? এটা ফিরিয়ে আনা যাবে না।`)) return;
   const ids = [...selectedMedIds];
   medicines = medicines.filter(m=>!selectedMedIds.has(m.id));
-  ids.forEach(addTombstone);
+  ids.forEach(function(x){ addTombstoneLogged(x); });
   save(DB_KEYS.med, medicines);
   toast(`${ids.length}টা ওষুধ মুছে ফেলা হয়েছে`);
   if(cloudReady()){

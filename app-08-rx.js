@@ -518,7 +518,7 @@ function deletePrescriptionFromModal(){
   if(!_currentRxId) return;
   if(!confirm('এই প্রেসক্রিপশনটা মুছে ফেলতে চান?')) return;
   prescriptions = prescriptions.filter(r=>r.id!==_currentRxId);
-  addTombstone(_currentRxId);
+  addTombstoneLogged(_currentRxId);
   save(DB_KEYS.prescription, prescriptions);
   if(cloudReady()){
     shopColl('prescriptions').doc(_currentRxId).delete().catch(e=>console.error(e));
@@ -1380,7 +1380,7 @@ function deleteSupplier(){
   const nPur = purchases.filter(p=>p.supplierId===id).length;
   if(!askDelete(`"${sup.name}" সাপ্লায়ারকে মুছে ফেলবেন?\n\n${nPur?('এই সাপ্লায়ারের নামে '+nPur+'টা ক্রয় এন্ট্রি আছে — ক্রয়ের তালিকায় ওগুলো থাকবে, শুধু সাপ্লায়ারের তালিকা থেকে নাম যাবে।\n\n'):''}মুছলেও সেটিংস → "পরিবর্তনের লগ ও রিসাইকেল বিন" থেকে ফেরানো যাবে।`)) return;
   suppliers = suppliers.filter(x=>x.id!==id);
-  addTombstone(id);
+  addTombstoneLogged(id);
   save(DB_KEYS.supplier, suppliers);
   editingSupplierId = null;
   closeModal('supplierModalBackdrop'); toast('সাপ্লায়ার মুছে ফেলা হয়েছে'); renderSuppliers();

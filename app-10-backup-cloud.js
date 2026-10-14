@@ -494,7 +494,8 @@ async function attachRealtimeListeners(){
   liveListeners = [];
   _lazyOn = {}; _liveByName = {};
   const gen = deltaNextGen();
-  await deltaSyncCloudFlag(db, shopCode);   // মালিক দ্রুত সিঙ্ক চালু করে থাকলে এই ফোনও (কর্মচারীর ফোনসহ) সেটা অনুসরণ করে
+  await deltaSyncCloudFlag(db, shopCode);
+  try{ if(typeof watchDeleteLog==='function') watchDeleteLog(db, shopCode); }catch(e){ console.warn('মোছার খবর শোনা শুরু হয়নি', e); }   // v29: মালিক যা মুছেছেন তা এই ফোন থেকেও মুছে যাবে   // মালিক দ্রুত সিঙ্ক চালু করে থাকলে এই ফোনও (কর্মচারীর ফোনসহ) সেটা অনুসরণ করে
   await migrateLegacyIfNeeded(db, shopCode);
   // ক্লাউড থেকে আসা রেকর্ড ফোনে বসানো। isFull=true: recs মানে ক্লাউডের পুরো তালিকা (আগের মতোই); false: শুধু বদলানো রেকর্ড — আগের তালিকায় id ধরে বসে/যোগ হয়।
   const _applyRecs = (c, recs, isFull)=>{

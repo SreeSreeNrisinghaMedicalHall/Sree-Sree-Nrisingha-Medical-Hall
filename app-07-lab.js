@@ -306,7 +306,7 @@ function deleteReferrer(id){
   if(r.due>0){ toast('এই রেফারারের বকেয়া কমিশন এখনো পরিশোধ হয়নি — আগে পরিশোধ করুন'); return; }
   if(!confirm(`"${r.name}" কে মুছে ফেলতে চান?`)) return;
   referrers = referrers.filter(x=>x.id!==id);
-  addTombstone(id);
+  addTombstoneLogged(id);
   save(DB_KEYS.referrer, referrers);
   if(cloudReady()) shopColl('referrers').doc(id).delete().catch(e=>console.error(e));
   toast('রেফারার মুছে ফেলা হয়েছে');
@@ -583,7 +583,7 @@ function deleteLabTestFromModal(){
   if(!_currentLabTestId) return;
   if(!confirm('এই টেস্ট রিপোর্টটা মুছে ফেলতে চান?')) return;
   labTests = labTests.filter(t=>t.id!==_currentLabTestId);
-  addTombstone(_currentLabTestId);
+  addTombstoneLogged(_currentLabTestId);
   save(DB_KEYS.labTest, labTests);
   if(cloudReady()){
     shopColl('labTests').doc(_currentLabTestId).delete().catch(e=>console.error(e));

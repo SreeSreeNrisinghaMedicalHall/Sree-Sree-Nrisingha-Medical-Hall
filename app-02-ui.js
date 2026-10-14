@@ -264,7 +264,7 @@ function addExpense(d){
 function deleteExpense(id, d){
   if(!requireOwnerRole('খরচ মুছে ফেলা')) return;
   if(!confirm('এই খরচটা মুছে ফেলবেন?')) return;
-  addTombstone(id);   // save()-এর স্টেল-রিকভারি যেন ফেরত না আনে
+  addTombstoneLogged(id);   // save()-এর স্টেল-রিকভারি যেন ফেরত না আনে
   payments = payments.filter(p=>p.id!==id);
   save(DB_KEYS.payment, payments);
   try{ if(cloudReady()) shopColl('payments').doc(id).delete().catch(e=>console.error(e)); }catch(e){}
