@@ -391,7 +391,7 @@ let _orderGroups = [];
 function _buildOrderGroups(){
   const low = medicines.filter(m=>(Number(m.stock)||0) <= (Number(m.lowLimit)||0));
   const lastP = new Map();
-  purchases.forEach(p=>{ const c = lastP.get(p.medicineId); if(!c || (p.ts||0) > (c.ts||0)) lastP.set(p.medicineId, p); });
+  purchases.forEach(p=>{ if(p.isReturn) return; const c = lastP.get(p.medicineId); if(!c || (p.ts||0) > (c.ts||0)) lastP.set(p.medicineId, p); });
   const by = new Map();
   low.forEach(m=>{ const c = (m.company||'').trim() || 'কোম্পানির নাম নেই'; if(!by.has(c)) by.set(c, []); by.get(c).push({m, p:lastP.get(m.id)}); });
   _orderGroups = [...by.entries()].map(([company, items])=>({company, items:items.sort((a,b)=>(a.m.name||'').localeCompare(b.m.name||''))})).sort((a,b)=>b.items.length - a.items.length);

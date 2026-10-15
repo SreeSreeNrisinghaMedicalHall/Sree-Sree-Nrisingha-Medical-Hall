@@ -290,6 +290,7 @@ function purchaseRecalc(src){
   _autoFillLineBoxes(paid, fct, qty, sellRef);
 }
 function openPurchaseModal(id, back){
+  { const _rp = id ? purchases.find(x=>x.id===id) : null; if(_rp && _rp.isReturn){ returnPurchaseView(id); return; } }   // ফেরত এন্ট্রি এডিট ফর্মে নয়, আলাদা দেখার জানালায়
   editingPurchaseId = id || null;
   _purchaseBack = (typeof back==='function') ? back : null;
   renderPurchaseSelects();
@@ -625,7 +626,7 @@ function renderPurchases(){
       sep = `<div class="row-sub" style="margin:10px 0 2px;padding:5px 8px;background:#f1f5f2;border-radius:8px;font-weight:700;">${p.date===todayStr()?'আজ — ':''}${p.date} • ${dayItems.length}টা • ${fmt(daySum)}</div>`;
     }
     return sep + `
-    <div class="row-item" onclick="openPurchaseModal('${p.id}')" style="cursor:pointer;"><div><div class="row-title">${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'}${p.batch?' • ব্যাচ: '+p.batch:''}${p.expiry?' • মেয়াদ: '+p.expiry:''}</div></div>
+    <div class="row-item" onclick="openPurchaseModal('${p.id}')" style="cursor:pointer;"><div><div class="row-title">${p.isReturn?'↩ ফেরত • ':''}${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'}${p.batch?' • ব্যাচ: '+p.batch:''}${p.expiry?' • মেয়াদ: '+p.expiry:''}</div></div>
     <div class="row-right"><div class="row-title">${fmt(p.qty*p.price)}</div><div class="row-sub">${p.qty} × ${fmt(p.price)}</div></div></div>`;
   }).join('');
   const more = filteredAll.length > list.length

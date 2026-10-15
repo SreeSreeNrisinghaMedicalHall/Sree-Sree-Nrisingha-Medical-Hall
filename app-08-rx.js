@@ -676,6 +676,7 @@ function sendPrescriptionToSale(){
 function resellFromHistoryByAmount(saleId, idPrefix){
   const sale = (typeof histFindSale==='function') ? histFindSale(saleId) : sales.find(s=>s.id===saleId);
   if(!sale){ toast('বিক্রয়ের তথ্য পাওয়া যায়নি'); return; }
+  if(sale.isReturn){ toast('ফেরত রসিদ থেকে আবার বিক্রয় করা যায় না'); return; }
   const valEl = document.getElementById(idPrefix+'_amt');
   const rawVal = parseFloat(bnToEnDigits(valEl ? valEl.value : '')) || 0;
   if(rawVal<=0){ toast('কত টাকার ওষুধ দেবেন লিখুন'); return; }
@@ -1122,7 +1123,7 @@ function showLedger(custId){
   { const seen = new Set(); _ledgerNames = [];
     [c.name, ...(_hf ? histBaseNames(custId).map(a=>a[0]) : []), ...custSales.map(s=>s.patientName), ...custPayments.map(p=>p.forName)].forEach(n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); _ledgerNames.push(n); } }); }
   const events = [
-    ...custSales.map(s=>({ts:s.ts, type:'sale', id:s.id, items:s.items, total:s.total, cash:s.cashPaidNow??s.total, due:s.dueAdded??0, rxId:s.rxId||null, patientName:s.patientName||null})),
+    ...custSales.map(s=>({ts:s.ts, type:'sale', id:s.id, items:s.items, total:s.total, cash:s.cashPaidNow??s.total, due:s.dueAdded??0, rxId:s.rxId||null, patientName:s.patientName||null, isReturn:!!s.isReturn})),
     ...custPayments.map(p=>({ts:p.ts, type:(p.type==='due_adjustment'?'adjust':'payment'), amount:p.amount, forName:p.forName||null, forOwn:!!p.forOwn, id:p.id||null}))
   ].sort((a,b)=>a.ts-b.ts);
   const _openBal = _hf ? histBaseCust(custId) : 0;
@@ -1138,7 +1139,7 @@ function showLedger(custId){
       // sale's own medicine-to-medicine ratio (the "rate" the owner sold at that time) as the
       // basis, scaled up/down to the requested amount, so it doesn't depend on dosage/days data.
       const rid = 'ledgerResell_'+e.id;
-      const resellWidget = `
+      const resellWidget = e.isReturn ? '' : `
         <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);" onclick="event.stopPropagation()">
           <div class="row-sub" style="margin-bottom:5px;">🔁 এই হারে (উপরের ওষুধগুলোর অনুপাতে) আরও ওষুধ পাঠান</div>
           <div style="display:flex;gap:6px;">
@@ -1148,10 +1149,10 @@ function showLedger(custId){
         </div>`;
       const deleteBtn = (currentRole()==='owner') ? `
         <div style="margin-top:18px;text-align:center;" onclick="event.stopPropagation()">
-          <button class="btn btn-sm" style="color:var(--danger,#c0392b);background:none;border:1px solid var(--danger,#c0392b);border-radius:6px;padding:3px 8px;font-size:11px;" onclick="deleteSaleRecord('${e.id}')">🗑 ভুল/ডুপ্লিকেট বিক্রয় মুছুন</button>
+          <button class="btn btn-sm" style="color:var(--danger,#c0392b);background:none;border:1px solid var(--danger,#c0392b);border-radius:6px;padding:3px 8px;font-size:11px;" onclick="deleteSaleRecord('${e.id}')">${e.isReturn ? '🗑 ভুল ফেরত মুছুন' : '🗑 ভুল/ডুপ্লিকেট বিক্রয় মুছুন'}</button>
         </div>` : '';
       return `<div class="card receipt" style="margin-top:0;padding:12px;cursor:pointer;" onclick="showReceiptById('${e.id}')">
-        <div class="r-meta" style="margin:0 0 4px;"><span>${dt}</span><span class="badge badge-gold">${running<0?'অগ্রিম এখন: '+fmt(-running):'বাকি এখন: '+fmt(running)}</span></div>
+        <div class="r-meta" style="margin:0 0 4px;"><span>${dt}${e.isReturn?' • ↩ ফেরত':''}</span><span class="badge badge-gold">${running<0?'অগ্রিম এখন: '+fmt(-running):'বাকি এখন: '+fmt(running)}</span></div>
         ${(e.patientName && e.patientName.trim() && e.patientName.trim()!==(c.name||'').trim()) ? `<div class="row-sub" style="margin:-2px 0 6px;">রোগী: <b>${escapeHtml(e.patientName)}</b></div>` : ''}
         <table style="margin-top:4px;">
           <thead><tr><th>ওষুধ</th><th class="num">পরিমাণ</th><th class="num">মূল্য</th></tr></thead>
@@ -1159,7 +1160,7 @@ function showLedger(custId){
         </table>
         <div class="r-meta" style="margin-top:6px;font-weight:700;">
           <span>মোট: ${fmt(e.total)}</span>
-          <span>নগদ: ${fmt(e.cash)}${e.due>0?' • বাকি +'+fmt(e.due):''}</span>
+          <span>${e.isReturn ? 'ফেরত নগদ: '+fmt(Math.abs(e.cash)) : 'নগদ: '+fmt(e.cash)}${e.due>0?' • বাকি +'+fmt(e.due):''}${e.due<0?' • বাকি থেকে কমেছে '+fmt(-e.due):''}</span>
         </div>
         ${resellWidget}
         ${deleteBtn}
@@ -1542,7 +1543,7 @@ function supplierEvents(supId){
   const ev = [];
   const _hf = (typeof histOn==='function' && histOn()) ? histFrom() : 0;
   if(_hf){ const ob = histBaseSup(supId); if(Math.abs(ob)>=0.005) ev.push({ts:_hf-1, kind:'adjust', d:ob, label:'আগের জের ('+histBn(histDateStr())+'-এর আগের হিসাব)'}); }
-  purchases.forEach(p=>{ if(_hf && (p.ts||0)<_hf) return; if(p.supplierId===supId && p.credit) ev.push({ts:p.ts||0, kind:'purchase', d:(p.qty||0)*(p.price||0), label:(p.medicineName||'')+' × '+(p.qty||0)}); });
+  purchases.forEach(p=>{ if(_hf && (p.ts||0)<_hf) return; if(p.supplierId===supId && p.credit) ev.push({ts:p.ts||0, kind:'purchase', d:(p.qty||0)*(p.price||0), label:(p.isReturn?'↩ ফেরত: ':'')+(p.medicineName||'')+' × '+Math.abs(p.qty||0)}); });
   payments.forEach(p=>{
     if(p.supplierId!==supId) return;
     if(_hf && (p.ts||0)<_hf) return;

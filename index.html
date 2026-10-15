@@ -238,6 +238,7 @@
     <section id="sec-purchase">
       <button class="btn btn-primary btn-block" onclick="openPurchaseModal()">+ নতুন ক্রয় এন্ট্রি</button>
       <h3 class="section-h"><span class="dot"></span>ক্রয়ের ইতিহাস</h3>
+      <button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="returnOpenPurchaseReturn()">↩ কোম্পানিকে ফেরত দিন</button>
       <div class="search-wrap" style="margin-bottom:8px;"><input type="text" id="purchaseSearch" placeholder="ওষুধ, কোম্পানি বা তারিখ (যেমন ০৫/১০) দিয়ে খুঁজুন..." oninput="purchaseShowCount=30;renderPurchases()" autocomplete="off"></div>
       <div class="card" id="purchaseList"></div>
     </section>
@@ -945,6 +946,7 @@ Fexo 120mg
       <button class="btn btn-outline" onclick="printReceipt()">🖨 প্রিন্ট করুন</button>
       <button class="btn btn-gold" onclick="shareReceipt()">⇪ শেয়ার করুন</button>
     </div>
+    <button id="rcptReturnBtn" class="btn btn-outline btn-block no-print" style="margin-top:8px;display:none;" onclick="returnOpenFromReceipt()">↩ ফেরত নিন (কাস্টমার ফেরত দিচ্ছে)</button>
     <button class="btn btn-primary btn-block no-print" style="margin-top:8px;" onclick="closeReceiptSafe()">বন্ধ করুন</button>
   </div>
 </div>
@@ -1000,7 +1002,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

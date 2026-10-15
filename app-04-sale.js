@@ -617,12 +617,13 @@ async function deleteSaleRecord(id){
   if(!requireOwnerRole('বিক্রয় মুছে ফেলা')) return;
   const sale = sales.find(s=>s.id===id);
   if(!sale) return;
-  if(!confirm('এই বিক্রয়টি মুছে ফেলবেন? এতে স্টক ফিরে যোগ হবে এবং এই বিক্রয়ে যোগ হওয়া বাকি (থাকলে) বিয়োগ হয়ে যাবে। ভুল/ডুপ্লিকেট বিক্রয় ঠিক করার জন্যই এটা — সাধারণভাবে বিক্রয় মুছবেন না।')) return;
+  if(sale.isReturn ? !confirm('এই ফেরতটা মুছবেন? স্টক ও কাস্টমারের বাকি আগের অবস্থায় ফিরবে (ফেরত নেওয়ার আগের হিসাব)। শুধু ভুল ফেরত ঠিক করার জন্য।') : !confirm('এই বিক্রয়টি মুছে ফেলবেন? এতে স্টক ফিরে যোগ হবে এবং এই বিক্রয়ে যোগ হওয়া বাকি (থাকলে) বিয়োগ হয়ে যাবে। ভুল/ডুপ্লিকেট বিক্রয় ঠিক করার জন্যই এটা — সাধারণভাবে বিক্রয় মুছবেন না।')) return;
   try{
-    sale.items.forEach(it=>{ const med = medicines.find(m=>m.id===it.id); if(med) med.stock += it.qty; });
+    const _noStock = !!(sale.isReturn && sale.restock===false);   // ফেরতে স্টক তোলা হয়নি হলে মোছার সময়ও স্টক বদলাবে না
+    if(!_noStock) sale.items.forEach(it=>{ const med = medicines.find(m=>m.id===it.id); if(med) med.stock += it.qty; });
     save(DB_KEYS.med, medicines);
     let cust = null;
-    if(sale.customerId && sale.dueAdded>0){
+    if(sale.customerId && sale.dueAdded){
       cust = customers.find(c=>c.id===sale.customerId);
       if(cust) cust.due = (cust.due||0) - sale.dueAdded;
     }
@@ -635,7 +636,7 @@ async function deleteSaleRecord(id){
     sales = sales.filter(s=>s.id!==id);
     save(DB_KEYS.sale, sales);
     if(cloudReady()){
-      sale.items.forEach(it=>{ shopColl('medicines').doc(it.id).update({stock: firebase.firestore.FieldValue.increment(it.qty)}).catch(e=>console.error(e)); });
+      if(!_noStock) sale.items.forEach(it=>{ shopColl('medicines').doc(it.id).update({stock: firebase.firestore.FieldValue.increment(it.qty)}).catch(e=>console.error(e)); });
       if(cust) shopColl('customers').doc(cust.id).update({due: cust.due}).catch(e=>console.error(e));
       shopColl('sales').doc(id).delete().catch(e=>console.error(e));
     }
@@ -655,7 +656,7 @@ function showReceipt(sale, keepSplit){
   const dt = new Date(sale.ts);
   const dateStr = dt.toLocaleDateString('bn-BD') + ' ' + dt.toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'});
   const rows = sale.items.map((it,i)=>`
-    <tr><td class="num">${i+1}.</td><td>${escapeHtml(it.name||'')}</td><td class="num">${it.qty}</td><td class="num">${fmt(it.price)}</td><td class="num">${fmt(it.price*it.qty)}</td></tr>
+    <tr><td class="num">${i+1}.</td><td>${escapeHtml(it.name||'')}</td><td class="num">${Math.abs(it.qty)}</td><td class="num">${fmt(it.price)}</td><td class="num">${fmt(Math.abs(it.price*it.qty))}</td></tr>
   `).join('');
   const cust = sale.customerId ? customers.find(c=>c.id===sale.customerId) : null;
   const cashPaidNow = (sale.cashPaidNow!==undefined) ? sale.cashPaidNow : sale.total;
@@ -668,6 +669,7 @@ function showReceipt(sale, keepSplit){
         <div class="r-sub" style="color:#000;"><b style="font-size:1.2em;font-weight:800;letter-spacing:0.3px;">মোবাইল: ০১৭৩৯০৯৭৩৯০</b></div>
         <div class="r-sub" style="color:#000;">সোনাখালী, আমতলী, বরগুনা।</div>
       </div>
+      ${sale.isReturn ? '<div style="text-align:center;font-weight:800;font-size:1.15em;margin:2px 0 6px;border:2px solid #000;padding:2px;">↩ ফেরত রসিদ</div>' : ''}
       <div class="r-meta">
         <span>তারিখ: ${dateStr}</span>
         <span>কাস্টমার: ${sale.customerName||'ওয়াক-ইন'}</span>
@@ -685,11 +687,12 @@ function showReceipt(sale, keepSplit){
         <tbody>${rows}</tbody>
       </table>
       <table>
-        <tr><td>উপমোট</td><td class="num">${fmt(sale.subtotal)}</td></tr>
+        <tr><td>উপমোট</td><td class="num">${fmt(Math.abs(sale.subtotal))}</td></tr>
         ${sale.discount>0?`<tr><td>ছাড়</td><td class="num">-${fmt(sale.discount)}</td></tr>`:''}
-        <tr class="r-total-row"><td>সর্বমোট</td><td class="num">${fmt(sale.total)}</td></tr>
-        <tr><td>${sale.payChannel ? escapeHtml(PAY_CHANNELS[sale.payChannel]||sale.payChannel)+'-এ পরিশোধ' : 'নগদ পরিশোধ'}</td><td class="num">${fmt(cashPaidNow)}</td></tr>
+        <tr class="r-total-row"><td>${sale.isReturn?'ফেরতের মোট':'সর্বমোট'}</td><td class="num">${fmt(Math.abs(sale.total))}</td></tr>
+        ${(sale.isReturn && !cashPaidNow) ? '' : `<tr><td>${sale.isReturn ? 'নগদ ফেরত দেওয়া হয়েছে' : (sale.payChannel ? escapeHtml(PAY_CHANNELS[sale.payChannel]||sale.payChannel)+'-এ পরিশোধ' : 'নগদ পরিশোধ')}</td><td class="num">${fmt(Math.abs(cashPaidNow))}</td></tr>`}
         ${dueAdded>0?`<tr><td>এই বিক্রয়ে নতুন বাকি</td><td class="num">${fmt(dueAdded)}</td></tr>`:''}
+         ${dueAdded<0?`<tr><td>বাকি থেকে কমানো হয়েছে</td><td class="num">${fmt(-dueAdded)}</td></tr>`:''}
         ${cust?`<tr><td><b>${(cust.due||0)<0?'অগ্রিম জমা (এখন)':'সর্বমোট বাকি (এখন)'}</b></td><td class="num"><b>${fmt(Math.abs(cust.due||0))}</b></td></tr>`:''}
         ${_receiptDueParts(cust).map(p=>`<tr><td style="font-size:0.85em;padding-left:10px;">• ${escapeHtml(p.label)}</td><td class="num" style="font-size:0.85em;">${fmt(p.amt)}</td></tr>`).join('')}
       </table>
@@ -704,6 +707,7 @@ function showReceipt(sale, keepSplit){
     document.getElementById('rcptSplitBox').style.display = _has ? 'block' : 'none';
     document.getElementById('rcptSplitChk').checked = _rcptSplit;
   }catch(e){}
+  try{ returnUpdateReceiptBtn(sale); }catch(e){}
   openModal('receiptModalBackdrop');
 }
 function shopQrHtml(){
@@ -726,7 +730,7 @@ function _receiptDueParts(cust){
   }catch(e){ return []; }
 }
 function buildReceiptText(sale, dateStr, cust){
-  let t = `শ্রী শ্রী নৃসিংহ মেডিকেল হল\nতারিখ: ${dateStr}\nকাস্টমার: ${sale.customerName||'ওয়াক-ইন'}\n`;
+  let t = `শ্রী শ্রী নৃসিংহ মেডিকেল হল\n${sale.isReturn?'** ফেরত রসিদ **\n':''}তারিখ: ${dateStr}\nকাস্টমার: ${sale.customerName||'ওয়াক-ইন'}\n`;
   if(cust && cust.mobile) t += `মোবাইল: ${cust.mobile}\n`;
   if(cust && (cust.age||cust.ageMonths)) t += `বয়স: ${formatAge(cust)}\n`;
   if(sale.doctorName) t += formatPrescriberLine(sale) + `\n`;
