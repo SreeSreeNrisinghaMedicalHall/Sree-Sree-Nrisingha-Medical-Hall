@@ -123,7 +123,7 @@ function renderReports(){
   const totalPurchase = pInRange.reduce((a,p)=>a+p.qty*p.price,0);
   const costOfGoods = sInRange.reduce((a,s)=>a+s.items.reduce((x,i)=>{ const med=medicines.find(m=>m.id===i.id); return x+(med?med.buy*i.qty:0); },0),0);
   const profit = totalSales - costOfGoods - testSums.price + testSums.profit;
-  const newDue = sInRange.filter(s=>s.payMethod==='due').reduce((a,s)=>a+s.total,0);
+  const newDue = sInRange.reduce((a,s)=>a+Math.max(0,s.dueAdded||0),0);
 
   document.getElementById('rSales').textContent = fmt(totalSales);
   document.getElementById('rPurchase').textContent = fmt(totalPurchase);
@@ -351,11 +351,11 @@ function showReportProfit(){
 }
 function showReportDue(){
   const range = document.getElementById('reportRange').value;
-  const sInRange = repSales().filter(s=>inRange(s.date, range) && s.payMethod==='due').sort((a,b)=>b.ts-a.ts);
+  const sInRange = repSales().filter(s=>inRange(s.date, range) && (s.dueAdded||0)>0).sort((a,b)=>b.ts-a.ts);
   const rows = sInRange.map(s=>`
     <div class="row-item" onclick="closeModal('detailModalBackdrop');showReceiptById('${s.id}')" style="cursor:pointer;">
       <div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.date}</div></div>
-      <div class="row-right"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">বাকি</div></div>
+      <div class="row-right"><div class="row-title">${fmt(s.dueAdded)}</div><div class="row-sub">বাকি</div></div>
     </div>`).join('');
   document.getElementById('detailModalTitle').textContent = 'নতুন বাকি (' + sInRange.length + 'টা)';
   document.getElementById('detailModalContent').innerHTML = rows || `<div class="empty-state">এই সময়কালে নতুন বাকি নেই</div>`;
