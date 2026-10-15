@@ -923,10 +923,10 @@ function checkBackupReminder(){
     bar.id = 'backupRemindBar';
     bar.style.cssText = 'position:fixed;left:10px;right:10px;bottom:84px;z-index:90;background:#fff8e1;border:1px solid #e0b84c;border-radius:14px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:14px;';
     bar.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">🛡 ব্যাকআপ পাঠানোর সময় হয়েছে</div>
-      <div style="margin-bottom:8px;">${ts ? days+' দিন ধরে' : 'এখনো'} নিজের Drive-এ ব্যাকআপ পাঠানো হয়নি। দুই ট্যাপেই হয়ে যাবে — "Drive" বেছে নিন।</div>
+      <div style="margin-bottom:8px;">${ts ? days+' দিন ধরে' : 'এখনো'} নিজের Drive-এ ব্যাকআপ পাঠানো হয়নি। নিচের বোতাম চাপলেই সরাসরি আপনার Google Drive-এ চলে যাবে।</div>
       <div style="display:flex;gap:8px;"><button class="btn btn-primary" style="flex:1;" id="brSend">⇪ এখনই Drive-এ পাঠান</button><button class="btn btn-outline" id="brLater">পরে</button></div>`;
     document.body.appendChild(bar);
-    bar.querySelector('#brSend').onclick = ()=>{ shareBackup(); };
+    bar.querySelector('#brSend').onclick = ()=>{ if(typeof driveBackupNow==='function') driveBackupNow(); else shareBackup(); };
     bar.querySelector('#brLater').onclick = ()=>{ try{ localStorage.setItem('ssn_backup_snooze_date', todayStr()); }catch(e){} bar.remove(); };
   }catch(e){ console.error('backup reminder failed', e); }
 }
