@@ -67,7 +67,7 @@ function renderCompanyPurchaseReport(){
   // that context is useful regardless of which range is selected.
   const range = document.getElementById('reportRange')?.value || 'month';
   const rangeMap = {}, allTimeMap = {};
-  purchases.forEach(p=>{
+  repPurchases().forEach(p=>{
     const company = purchaseCompanyName(p);
     const amt = p.qty*p.price;
     if(inRange(p.date, range)) rangeMap[company] = (rangeMap[company]||0) + amt;
@@ -96,7 +96,7 @@ function renderCompanyPurchaseReport(){
 }
 function showCompanyPurchaseDetail(company){
   const range = document.getElementById('reportRange')?.value || 'month';
-  const list = purchases.filter(p=>purchaseCompanyName(p)===company).sort((a,b)=>b.ts-a.ts);
+  const list = repPurchases().filter(p=>purchaseCompanyName(p)===company).sort((a,b)=>b.ts-a.ts);
   const rangeTotal = list.filter(p=>inRange(p.date, range)).reduce((a,p)=>a+p.qty*p.price,0);
   const allTotal = list.reduce((a,p)=>a+p.qty*p.price,0);
   const rows = list.map(p=>`
@@ -114,8 +114,9 @@ function showCompanyPurchaseDetail(company){
 function renderReports(){
   updateDueListStatus();
   const range = document.getElementById('reportRange').value;
-  const sInRange = sales.filter(s=>inRange(s.date, range));
-  const pInRange = purchases.filter(p=>inRange(p.date, range));
+  histPlaceBar('reportCustomRangeWrap','histReportBar', histBarHtml(histReportFromDate(range)));
+  const sInRange = repSales().filter(s=>inRange(s.date, range));
+  const pInRange = repPurchases().filter(p=>inRange(p.date, range));
   const ltInRange = labTests.filter(lt=>inRange(lt.date, range));
   const testSums = ltInRange.reduce((a,lt)=>{ const x=labTestTotals(lt); a.price+=x.price; a.profit+=x.profit; return a; }, {price:0, profit:0});
   const totalSales = sInRange.reduce((a,s)=>a+s.total,0) + testSums.price;
@@ -151,6 +152,7 @@ function renderAntibioticRegister(){
   const q = (document.getElementById('antibioticSearch')?.value||'').trim().toLowerCase();
   const dFrom = document.getElementById('antibioticDateFrom')?.value||'';
   const dTo = document.getElementById('antibioticDateTo')?.value||'';
+  histPlaceBar('antibioticDateFrom','histAbxBar', histBarHtml(dFrom), 2);
   const allRows = buildAntibioticRows(q, dFrom, dTo);
   const rows = allRows.slice(0, antibioticShowCount);
   listEl.innerHTML = rows.length ? rows.map(rowToHtml).join('') : `<div class="empty-state">${(q||dFrom||dTo) ? 'এই শর্তে কোনো এন্টিবায়োটিক বিক্রির রেকর্ড নেই' : 'এখনো কোনো এন্টিবায়োটিক বিক্রি হয়নি'}</div>`;
@@ -161,7 +163,7 @@ function renderAntibioticRegister(){
 }
 function buildAntibioticRows(q, dFrom, dTo){
   const rows = [];
-  sales.forEach(s=>{
+  repSales().forEach(s=>{
     if(dFrom && s.date < dFrom) return;
     if(dTo && s.date > dTo) return;
     (s.items||[]).forEach(it=>{
@@ -192,7 +194,7 @@ function _isAbxPurchase(p){
   try{ return !!looksLikeAntibiotic(p.medicineName||'', ''); }catch(e){ return false; }
 }
 function buildAntibioticPurchaseRows(q, dFrom, dTo){
-  const rows = purchases.filter(p=>{
+  const rows = repPurchases().filter(p=>{
     if(!_isAbxPurchase(p)) return false;
     if(dFrom && p.date < dFrom) return false;
     if(dTo && p.date > dTo) return false;
@@ -276,7 +278,7 @@ function _rsRender(){
   const range = document.getElementById('reportRange').value;
   const q = bnToEnDigits(_rsQuery||'').trim().toLowerCase().replace(/[-.]/g,'/');
   const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
-  const sAll = sales.filter(s=>inRange(s.date, range)).sort((a,b)=>b.ts-a.ts);
+  const sAll = repSales().filter(s=>inRange(s.date, range)).sort((a,b)=>b.ts-a.ts);
   const ltAll = labTests.filter(lt=>inRange(lt.date, range) && labTestTotals(lt).price>0).sort((a,b)=>b.ts-a.ts);
   const sIn = tokens.length ? sAll.filter(s=>{ const h=_rsHay(s); return tokens.every(t=>h.indexOf(t)>=0); }) : sAll;
   const ltIn = tokens.length ? ltAll.filter(lt=>{ const d=String(lt.date||''); const [yy,mm,dd]=d.split('-'); const h=[lt.patientName||'', d.replace(/-/g,'/'), (dd&&mm&&yy)?(dd+'/'+mm+'/'+yy+' '+dd+'/'+mm):''].join(' ').toLowerCase(); return tokens.every(t=>h.indexOf(t)>=0); }) : ltAll;
@@ -309,7 +311,7 @@ function _rsRender(){
 }
 function showReportPurchases(){
   const range = document.getElementById('reportRange').value;
-  const pInRange = purchases.filter(p=>inRange(p.date, range)).sort((a,b)=>b.ts-a.ts);
+  const pInRange = repPurchases().filter(p=>inRange(p.date, range)).sort((a,b)=>b.ts-a.ts);
   const rows = pInRange.map(p=>`
     <div class="row-item" onclick="openPurchaseFrom('${p.id}','showReportPurchases')" style="cursor:pointer;">
       <div><div class="row-title">${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'} • ${p.date}</div></div>
@@ -321,7 +323,7 @@ function showReportPurchases(){
 }
 function showReportProfit(){
   const range = document.getElementById('reportRange').value;
-  const sInRange = sales.filter(s=>inRange(s.date, range)).sort((a,b)=>b.ts-a.ts);
+  const sInRange = repSales().filter(s=>inRange(s.date, range)).sort((a,b)=>b.ts-a.ts);
   const ltInRange = labTests.filter(lt=>inRange(lt.date, range) && labTestTotals(lt).price>0).sort((a,b)=>b.ts-a.ts);
   let totalProfit = 0;
   const rows = sInRange.map(s=>{
@@ -349,7 +351,7 @@ function showReportProfit(){
 }
 function showReportDue(){
   const range = document.getElementById('reportRange').value;
-  const sInRange = sales.filter(s=>inRange(s.date, range) && s.payMethod==='due').sort((a,b)=>b.ts-a.ts);
+  const sInRange = repSales().filter(s=>inRange(s.date, range) && s.payMethod==='due').sort((a,b)=>b.ts-a.ts);
   const rows = sInRange.map(s=>`
     <div class="row-item" onclick="closeModal('detailModalBackdrop');showReceiptById('${s.id}')" style="cursor:pointer;">
       <div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.date}</div></div>

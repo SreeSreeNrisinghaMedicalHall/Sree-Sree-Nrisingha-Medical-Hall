@@ -402,6 +402,15 @@
         <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="showExpenseSummary()">💸 খরচের হিসাব দেখুন (খাত অনুযায়ী)</button>
       </div>
 
+      <h3 class="section-h"><span class="dot"></span>ইতিহাস সীমা (পড়া কমাতে) <span class="tag-en">History Window</span></h3>
+
+      <div class="card">
+        <div class="row-sub">অ্যাপ খোলার সময় সব ফোনে শুধু শেষ ৬ মাসের বিক্রি-ক্রয় পড়া হবে — Firebase-এর পড়ার খরচ অনেক কমবে। আগের কাস্টমার-বাকি, সাপ্লায়ার-বাকি ও মোট কেনাকাটা "আগের জের" হিসেবে জমা থাকে, তাই বাকির হিসাব বদলায় না। পুরনো রিপোর্ট দেখতে রিপোর্ট ট্যাবে বোতাম চাপলে ক্লাউড থেকে আসে (ইন্টারনেট লাগে)।</div>
+        <div class="row-sub" id="histWinInfo" style="margin-top:8px;font-weight:700;"></div>
+        <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="histSetWindow(6)">📅 ৬ মাসের সীমা চালু করুন / এগিয়ে আনুন</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="histTurnOff()">সীমা বন্ধ করুন (সব ইতিহাস পড়বে)</button>
+      </div>
+
       <h3 class="section-h"><span class="dot"></span>পুরনো ইতিহাস আর্কাইভ <span class="tag-en">Archive Old History</span></h3>
       <div class="card">
         <div class="row-sub">১ বছরের বেশি পুরনো বিক্রয়/ক্রয় রেকর্ড ক্লাউডে নিশ্চিতভাবে সংরক্ষিত আছে কিনা যাচাই করে, নিশ্চিত হলে এই ফোন থেকে সরিয়ে জায়গা খালি করে — ক্লাউডে থেকেই যায়, হারায় না।</div>
@@ -988,7 +997,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

@@ -605,7 +605,7 @@ function formatPrescriberLine(sale){
   return `${label}: ${displayName}${sale.doctorTitle?' ('+sale.doctorTitle+')':''}`;
 }
 function showReceiptById(id){
-  const sale = sales.find(s=>s.id===id);
+  const sale = (typeof histFindSale==='function') ? histFindSale(id) : sales.find(s=>s.id===id);
   if(sale) showReceipt(sale);
 }
 // Sales are normally an append-only record on purpose (audit trail) — this exists specifically

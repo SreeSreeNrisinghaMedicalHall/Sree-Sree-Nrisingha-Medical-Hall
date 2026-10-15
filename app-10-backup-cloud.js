@@ -560,6 +560,8 @@ async function attachRealtimeListeners(){
   // তাই নতুন/মোছা ফোনে পুরনো রেকর্ড বাদ পড়লে বাকি ভুল আসত। সীমা শুধু তখনই চলে যখন এই ফোনে মালিক নিজে হাতে "আর্কাইভ" চালিয়েছেন (ssn_archived_any) — আগের মতোই।
   // ল্যাব টেস্টের ৩০ দিনের সীমা (খোলার সময়) আগের মতোই।
   const bootQuery = (c, full)=>{
+    // v32: ইতিহাস সীমা চালু থাকলে বিক্রি/ক্রয় শুধু নির্দিষ্ট তারিখ (histFrom) থেকে পড়া হয় — আগের জের আলাদা জমা আছে (app-13-histwindow.js)
+    try{ if(!full && (c.name==='sales'||c.name==='purchases') && typeof histOn==='function' && histOn()) return shopColl(c.name).where('ts', '>=', histFrom()); }catch(e){}
     const win = c.recentMs || (localStorage.getItem('ssn_archived_any') ? ARCHIVE_AGE_MS : 0);
     return (c.recentOnlyField && !full && win) ? shopColl(c.name).where(c.recentOnlyField, '>', Date.now()-win) : shopColl(c.name);
   };

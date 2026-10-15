@@ -674,7 +674,7 @@ function sendPrescriptionToSale(){
 // for ANY past sale (Rx-originated or a plain manual POS sale), since it only needs the
 // items/quantities already recorded on the sale itself, not dosage data.
 function resellFromHistoryByAmount(saleId, idPrefix){
-  const sale = sales.find(s=>s.id===saleId);
+  const sale = (typeof histFindSale==='function') ? histFindSale(saleId) : sales.find(s=>s.id===saleId);
   if(!sale){ toast('বিক্রয়ের তথ্য পাওয়া যায়নি'); return; }
   const valEl = document.getElementById(idPrefix+'_amt');
   const rawVal = parseFloat(bnToEnDigits(valEl ? valEl.value : '')) || 0;
@@ -771,7 +771,9 @@ let _ctpCache = null, _ctpVer = -1, _ctpSales = null, _ctpLen = -1;
 function _custTotalsMap(){
   if(_ctpCache && _ctpVer === _dataVersion && _ctpSales === sales && _ctpLen === sales.length) return _ctpCache;
   const m = new Map();
-  for(let i=0;i<sales.length;i++){ const s = sales[i]; if(s && s.customerId) m.set(s.customerId, (m.get(s.customerId)||0) + (s.total||0)); }
+  const _hf = (typeof histOn==='function' && histOn()) ? histFrom() : 0;
+  for(let i=0;i<sales.length;i++){ const s = sales[i]; if(s && s.customerId && (!_hf || (s.ts||0)>=_hf)) m.set(s.customerId, (m.get(s.customerId)||0) + (s.total||0)); }
+  if(_hf){ const b = histBase(); Object.keys(b.ct||{}).forEach(id=>m.set(id, (m.get(id)||0) + (+b.ct[id]||0))); }
   _ctpCache = m; _ctpVer = _dataVersion; _ctpSales = sales; _ctpLen = sales.length;
   return m;
 }
@@ -785,7 +787,8 @@ function customerTotalPurchased(custId){
 // (see role gating in showLedger/renderCustomers) — never computed into anything a staff
 // session's DOM can read.
 function customerTotalProfit(custId){
-  return sales.filter(s=>s.customerId===custId).reduce((sum,s)=>{
+  const _hf = (typeof histOn==='function' && histOn()) ? histFrom() : 0;
+  return sales.filter(s=>s.customerId===custId && (!_hf || (s.ts||0)>=_hf)).reduce((sum,s)=>{
     const cost = s.items.reduce((x,it)=>{ const med=medicines.find(m=>m.id===it.id); return x+(med?(med.buy||0)*it.qty:0); },0);
     return sum + ((s.total||0) - cost);
   },0);
@@ -807,9 +810,11 @@ function _buildPeopleIndexRaw(){
     if(!n || k===own[cid]) return null;
     const m = (idx[cid] = idx[cid] || {}); return (m[k] = m[k] || {name:n, taken:0, paid:0});
   };
-  sales.forEach(s=>{ if(!s.customerId) return; const p = slot(s.customerId, s.patientName); if(p) p.taken += (s.dueAdded||0); });
+  const _hf = (typeof histOn==='function' && histOn()) ? histFrom() : 0;
+  if(_hf){ customers.forEach(c=>{ histBaseNames(c.id).forEach(a=>{ const e = slot(c.id, a[0]); if(e){ e.taken += (+a[1]||0); e.paid += (+a[2]||0); } }); }); }
+  sales.forEach(s=>{ if(!s.customerId || (_hf && (s.ts||0)<_hf)) return; const p = slot(s.customerId, s.patientName); if(p) p.taken += (s.dueAdded||0); });
   payments.forEach(p=>{
-    if(!p.customerId || !p.forName) return; const e = slot(p.customerId, p.forName); if(!e) return;
+    if(!p.customerId || !p.forName || (_hf && (p.ts||0)<_hf)) return; const e = slot(p.customerId, p.forName); if(!e) return;
     if(p.type==='due_adjustment') e.taken += p.amount; else if(!p.type) e.paid += p.amount;
   });
   const out = {};
@@ -1111,15 +1116,17 @@ function showLedger(custId){
   reconcileOne(custId);
   const c = customers.find(x=>x.id===custId);
   if(!c) return;
-  const custSales = sales.filter(s=>s.customerId===custId);
-  const custPayments = payments.filter(p=>p.customerId===custId);
+  const _hf = histOn() ? histFrom() : 0;
+  const custSales = sales.filter(s=>s.customerId===custId && (!_hf || (s.ts||0)>=_hf));
+  const custPayments = payments.filter(p=>p.customerId===custId && (!_hf || (p.ts||0)>=_hf));
   { const seen = new Set(); _ledgerNames = [];
-    [c.name, ...custSales.map(s=>s.patientName), ...custPayments.map(p=>p.forName)].forEach(n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); _ledgerNames.push(n); } }); }
+    [c.name, ...(_hf ? histBaseNames(custId).map(a=>a[0]) : []), ...custSales.map(s=>s.patientName), ...custPayments.map(p=>p.forName)].forEach(n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); _ledgerNames.push(n); } }); }
   const events = [
     ...custSales.map(s=>({ts:s.ts, type:'sale', id:s.id, items:s.items, total:s.total, cash:s.cashPaidNow??s.total, due:s.dueAdded??0, rxId:s.rxId||null, patientName:s.patientName||null})),
     ...custPayments.map(p=>({ts:p.ts, type:(p.type==='due_adjustment'?'adjust':'payment'), amount:p.amount, forName:p.forName||null, forOwn:!!p.forOwn, id:p.id||null}))
   ].sort((a,b)=>a.ts-b.ts);
-  let running = 0;
+  const _openBal = _hf ? histBaseCust(custId) : 0;
+  let running = _openBal;
   const rowsHtml = events.map(e=>{
     if(e.type==='sale'){ running += e.due; }
     else if(e.type==='adjust'){ running += e.amount; }
@@ -1166,7 +1173,11 @@ function showLedger(custId){
   // The running-বাকি balance above has to be computed oldest→newest (each entry depends on the
   // one before it) — but the person wants to actually SEE the newest transaction first, so the
   // display order is reversed only after that math is done.
-  const rows = rowsHtml.slice().reverse().join('<div style="height:8px;"></div>');
+  let rows = rowsHtml.slice().reverse().join('<div style="height:8px;"></div>');
+  if(_hf && Math.abs(_openBal)>=0.5){
+    const openRow = `<div class="row-item"><div><div class="row-title">আগের জের</div><div class="row-sub">${histBn(histDateStr())}-এর আগের সব লেনদেনের হিসাব (ফোনে জমা আছে)</div></div><div class="row-right"><span class="badge badge-gold">${_openBal<0?'অগ্রিম '+fmt(-_openBal):'বাকি '+fmt(_openBal)}</span></div></div>`;
+    rows = rows ? rows+'<div style="height:8px;"></div>'+openRow : openRow;
+  }
   document.getElementById('ledgerCustName').textContent = c.name;
   try{ const lel=document.getElementById('ledgerCustName'); if(lel && _photoCache[c.id]){ lel.insertAdjacentHTML('afterbegin', custAvatar(c,36,true)+' '); } }catch(e){}
   try{
@@ -1181,6 +1192,7 @@ function showLedger(custId){
   if(isOwnerView){
     document.getElementById('ledgerTotalPurchased').textContent = fmt(customerTotalPurchased(custId));
     document.getElementById('ledgerTotalProfit').textContent = fmt(customerTotalProfit(custId));
+    try{ const _pl = profitWrap.querySelector('.label'); if(_pl) _pl.textContent = _hf ? 'এই কাস্টমার থেকে আনুমানিক লাভ ('+histBn(histDateStr())+' থেকে)' : 'এই কাস্টমার থেকে সর্বমোট আনুমানিক লাভ'; }catch(e){}
     purchasedWrap.style.display = '';
     profitWrap.style.display = '';
   } else {
@@ -1221,8 +1233,9 @@ async function recalcCustomerDue(){
   const c = customers.find(x=>x.id===custId);
   if(!c) return;
   if(!requireOwnerRole('বাকি পুনর্গণনা করা')) return;
-  const totalDueAdded = sales.filter(s=>s.customerId===custId).reduce((a,s)=>a+(s.dueAdded||0),0);
-  const custPays = payments.filter(p=>p.customerId===custId);
+  const _hf = histOn() ? histFrom() : 0;
+  const totalDueAdded = sales.filter(s=>s.customerId===custId && (!_hf || (s.ts||0)>=_hf)).reduce((a,s)=>a+(s.dueAdded||0),0) + (_hf ? histBaseCust(custId) : 0);
+  const custPays = payments.filter(p=>p.customerId===custId && (!_hf || (p.ts||0)>=_hf));
   const totalPaid = custPays.filter(p=>p.type!=='due_adjustment').reduce((a,p)=>a+(p.amount||0),0);
   const totalManualAdded = custPays.filter(p=>p.type==='due_adjustment').reduce((a,p)=>a+(p.amount||0),0);
   const correctDue = totalDueAdded + totalManualAdded - totalPaid;
@@ -1246,18 +1259,21 @@ function ledgerDueFor(custId){
   if(localStorage.getItem('ssn_archived_any')) return {unsafe:true, due:0}; // পুরনো বিক্রয় আর্কাইভ হলে ইতিহাস অসম্পূর্ণ — নিজে থেকে বদলাবে না
   const ev = [];
   let unsafe = false;
+  const _hf = histOn() ? histFrom() : 0;   // সীমা চালু: D-এর পরের লেনদেন + আগের জের
   sales.forEach(s=>{
     if(s.customerId!==custId) return;
+    if(_hf && (s.ts||0)<_hf) return;
     if(s.dueAdded==null && s.payMethod==='due') unsafe = true; // খুব পুরনো রেকর্ড, বাকির পরিমাণ জানা নেই
     ev.push({ts:s.ts||0, d:(s.dueAdded||0)});
   });
   payments.forEach(p=>{
     if(p.customerId!==custId) return;
+    if(_hf && (p.ts||0)<_hf) return;
     if(p.type==='due_adjustment') ev.push({ts:p.ts||0, d:(p.amount||0)});
     else if(!p.type) ev.push({ts:p.ts||0, d:-(p.amount||0)});
   });
   ev.sort((a,b)=>a.ts-b.ts);
-  let run = 0; ev.forEach(e=>{ run = run + e.d; });
+  let run = _hf ? histBaseCust(custId) : 0; ev.forEach(e=>{ run = run + e.d; });
   return {unsafe, due:run};
 }
 function reconcileOne(custId){
@@ -1524,9 +1540,12 @@ let supplierShowAll = false;
 // আর কাস্টমারের বাকি-হিসাব এগুলো ছোঁয় না (সেগুলো customerId দিয়ে ছাঁকে)।
 function supplierEvents(supId){
   const ev = [];
-  purchases.forEach(p=>{ if(p.supplierId===supId && p.credit) ev.push({ts:p.ts||0, kind:'purchase', d:(p.qty||0)*(p.price||0), label:(p.medicineName||'')+' × '+(p.qty||0)}); });
+  const _hf = (typeof histOn==='function' && histOn()) ? histFrom() : 0;
+  if(_hf){ const ob = histBaseSup(supId); if(Math.abs(ob)>=0.005) ev.push({ts:_hf-1, kind:'adjust', d:ob, label:'আগের জের ('+histBn(histDateStr())+'-এর আগের হিসাব)'}); }
+  purchases.forEach(p=>{ if(_hf && (p.ts||0)<_hf) return; if(p.supplierId===supId && p.credit) ev.push({ts:p.ts||0, kind:'purchase', d:(p.qty||0)*(p.price||0), label:(p.medicineName||'')+' × '+(p.qty||0)}); });
   payments.forEach(p=>{
     if(p.supplierId!==supId) return;
+    if(_hf && (p.ts||0)<_hf) return;
     if(p.type==='supplier_due_adjustment') ev.push({ts:p.ts||0, kind:'adjust', d:(p.amount||0), label:'পুরনো/হাতে যোগ করা বাকি'});
     else if(p.type==='supplier_payment') ev.push({ts:p.ts||0, kind:'payment', d:-(p.amount||0), label:'টাকা পরিশোধ'});
   });

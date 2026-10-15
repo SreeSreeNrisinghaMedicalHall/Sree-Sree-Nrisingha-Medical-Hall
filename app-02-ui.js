@@ -162,7 +162,7 @@ function showExpenseSummary(keep){
 function showProfitHistory(){
   const months = {};
   const slot = ym => (months[ym] = months[ym] || {sales:[], labs:[], exp:0});
-  sales.forEach(x=>{ if(x.date) slot(x.date.slice(0,7)).sales.push(x); });
+  repSales().forEach(x=>{ if(x.date) slot(x.date.slice(0,7)).sales.push(x); });
   labTests.forEach(x=>{ if(x.date) slot(x.date.slice(0,7)).labs.push(x); });
   payments.forEach(p=>{ if(p.type==='expense' && p.date) slot(p.date.slice(0,7)).exp += (p.amount||0); });
   const keys = Object.keys(months).sort().reverse();
@@ -188,7 +188,7 @@ function showProfitHistory(){
   });
   document.getElementById('detailModalTitle').textContent = '📈 লাভ-খরচের ইতিহাস';
   document.getElementById('detailModalContent').innerHTML = (keys.length ? html : '<div class="empty-state">এখনো কোনো হিসাব নেই</div>') +
-    `<div class="row-sub" style="margin-top:10px;line-height:1.5;">নিট লাভ = আনুমানিক লাভ − ক্যাশ হিসাবে লেখা দোকানের খরচ। ওষুধের কেনা দাম (ক্রয়মূল্য) ঠিকমতো লেখা না থাকলে আনুমানিক লাভ বেশি দেখাতে পারে।</div>`;
+    `<div class="row-sub" style="margin-top:10px;line-height:1.5;">${histOn()?`<b style="color:#a15c00;">⚠ ফোনে ${histBn(histDateStr())} থেকে পরের বিক্রি আছে — তার আগের মাসগুলোর বিক্রি/লাভ অসম্পূর্ণ দেখাতে পারে (রিপোর্ট ট্যাবে পুরনো ডাটা আনলে এখানেও আসবে)।</b><br>`:''}নিট লাভ = আনুমানিক লাভ − ক্যাশ হিসাবে লেখা দোকানের খরচ। ওষুধের কেনা দাম (ক্রয়মূল্য) ঠিকমতো লেখা না থাকলে আনুমানিক লাভ বেশি দেখাতে পারে।</div>`;
   openModal('detailModalBackdrop');
 }
 // ===== ক্যাশ হিসাব: একটা দিনে ক্যাশ বাক্সে কত টাকা থাকার কথা =====
@@ -198,14 +198,14 @@ function showProfitHistory(){
 const PAY_CHANNELS = {cash:'নগদ', bkash:'বিকাশ', nagad:'নগদ (Nagad)', rocket:'রকেট', bank:'কার্ড/ব্যাংক'};
 function _saleCash(s){ return (s.cashPaidNow!==undefined && s.cashPaidNow!==null) ? (s.cashPaidNow||0) : Math.max(0,(s.total||0)-(s.dueAdded||0)); }
 function computeCashDay(d){
-  const daySales = sales.filter(x=>x.date===d);
+  const daySales = repSales().filter(x=>x.date===d);
   const dayLab = labTests.filter(x=>x.date===d);
   const dayPay = payments.filter(p=>p.date===d);
   const collections = dayPay.filter(p=>p.customerId && !p.type);
   const supPaid = dayPay.filter(p=>p.type==='supplier_payment');
   const commPaid = dayPay.filter(p=>p.type==='referrer_commission');
   const expList = dayPay.filter(p=>p.type==='expense');   // দোকানের অন্যান্য খরচ (payments-এর মধ্যেই type:'expense' হিসেবে সেভ হয়)
-  const dayPur = purchases.filter(p=>p.date===d);
+  const dayPur = repPurchases().filter(p=>p.date===d);
   const cashPur = dayPur.filter(p=>!p.credit);
   const creditPur = dayPur.filter(p=>p.credit);
   const sum = (arr,f)=>arr.reduce((a,x)=>a+(f(x)||0),0);
