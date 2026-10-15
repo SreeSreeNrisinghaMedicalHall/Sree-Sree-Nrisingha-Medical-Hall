@@ -515,7 +515,7 @@ function showTodaySales(){
   const rows = todaySales.map(s=>`
     <div class="row-item" onclick="showReceiptById('${s.id}')" style="cursor:pointer;">
       <div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.items.length} আইটেম • ${new Date(s.ts).toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'})}</div></div>
-      <div class="row-right"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">${s.payMethod==='due'?'বাকি':'নগদ'}</div></div>
+      <div class="row-right"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">${salePayLabel(s)}</div></div>
     </div>`).join('');
   const testRows = todayLabTests.map(lt=>{
     const x = labTestTotals(lt);

@@ -290,7 +290,7 @@ function _rsRender(){
     const rid = 'rsResell_'+s.id;
     return `<div class="row-item" style="flex-wrap:wrap;">
       <div onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;flex:1 1 60%;min-width:0;"><div class="row-title">${escapeHtml(cust)}${patientLine}</div><div class="row-sub">${s.items.length} আইটেম • ${s.date}${s.seller?' • '+escapeHtml(s.seller):''}</div></div>
-      <div class="row-right" onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">${s.payMethod==='due'?'বাকি':'নগদ'}</div></div>
+      <div class="row-right" onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">${salePayLabel(s)}</div></div>
       <div style="flex:1 1 100%;display:flex;gap:6px;margin-top:6px;" onclick="event.stopPropagation()">
         <input type="text" id="${rid}_amt" placeholder="🔁 এই হারে কত টাকার ওষুধ" inputmode="numeric" style="flex:1;min-width:0;">
         <button class="btn btn-sm btn-gold" style="flex-shrink:0;" onclick="resellFromHistoryByAmount('${s.id}','${rid}')">পাঠান</button>
