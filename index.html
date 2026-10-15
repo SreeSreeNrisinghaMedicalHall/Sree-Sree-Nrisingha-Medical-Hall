@@ -372,6 +372,9 @@
       <div class="card">
         <button class="btn btn-gold btn-block" onclick="shareBackup()">⇪ ব্যাকআপ শেয়ার করুন (Drive/WhatsApp)</button>
         <div id="driveBackupInfo" class="row-sub" style="margin-top:6px;"></div>
+        <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="driveBackupNow()">☁ সরাসরি Google Drive-এ ব্যাকআপ পাঠান</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="driveRestoreList()">☁ Google Drive থেকে ফেরান</button>
+        <div id="driveDirectInfo" class="row-sub" style="margin-top:6px;"></div>
         <div id="autoBackupInfo" class="row-sub" style="margin-top:10px;padding:8px 10px;border-radius:10px;background:var(--green-soft,#e8f5e9);">🛡 স্বয়ংক্রিয় দৈনিক ব্যাকআপ: ক্লাউড সংযোগ থাকলে অ্যাপ নিজেই প্রতিদিন একটা আলাদা কপি রাখে — আপনাকে কিছু করতে হবে না।</div>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openCloudBackupList()">🗓 স্বয়ংক্রিয় ব্যাকআপ থেকে ফেরান</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="exportData()">⭳ ব্যাকআপ ডাউনলোড করুন (JSON)</button>
@@ -997,7 +1000,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nrisingha-medical-v32';
+const CACHE_NAME = 'nrisingha-medical-v33';
 const ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const ASSETS = [
   './app-11-lock-init.js',
   './app-12-delta.js',
   './app-13-histwindow.js',
+  './app-14-drive.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
@@ -54,6 +55,8 @@ self.addEventListener('activate', (e) => {
 // Only fall back to the cached copy if the network request fails (e.g. offline).
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // Google লগইন/Drive অনুরোধ ক্যাশে ঢোকানো হবে না (ব্যাকআপের ব্যক্তিগত ডাটা ক্যাশে জমা না হওয়ার জন্য)
+  try{ const h = new URL(e.request.url).hostname; if(h==='www.googleapis.com' || h==='accounts.google.com') return; }catch(err){}
   e.respondWith(
     fetch(e.request, { cache: 'no-store' })
       .then((response) => {
