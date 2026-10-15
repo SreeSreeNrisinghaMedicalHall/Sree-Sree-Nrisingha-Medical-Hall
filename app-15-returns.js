@@ -15,12 +15,28 @@ function returnRemaining(sale){
   return (sale.items||[]).map(it=>Math.max(0, (it.qty||0) - returnDoneQty(sale.id, it.id)));
 }
 function returnUpdateReceiptBtn(sale){
-  const b = document.getElementById('rcptReturnBtn'); if(!b) return;
-  let show = false;
-  try{ show = !!sale && !sale.isReturn && currentRole()==='owner' && returnRemaining(sale).some(x=>x>1e-9); }catch(e){}
-  b.style.display = show ? 'block' : 'none';
+  const b = document.getElementById('rcptReturnBtn'), d = document.getElementById('rcptReturnDelBtn');
+  let show = false, del = false;
+  try{
+    const owner = currentRole()==='owner';
+    show = !!sale && !sale.isReturn && owner && returnRemaining(sale).some(x=>x>1e-9);
+    del = !!sale && !!sale.isReturn && owner;     // ফেরত রসিদে "ভুল ফেরত মুছুন"
+  }catch(e){}
+  if(b) b.style.display = show ? 'block' : 'none';
+  if(d) d.style.display = del ? 'block' : 'none';
 }
-function returnOpenFromReceipt(){ if(_rcptSale) returnOpenForSale(_rcptSale.id); }
+// রসিদের জানালা আগে বন্ধ করি — না হলে ফেরতের জানালা তার পেছনে লুকিয়ে থাকত
+function returnOpenFromReceipt(){
+  if(!_rcptSale) return;
+  const id = _rcptSale.id;
+  try{ closeModal('receiptModalBackdrop'); }catch(e){}
+  returnOpenForSale(id);
+}
+function returnCancel(){
+  try{ closeModal('detailModalBackdrop'); }catch(e){}
+  if(_retSale){ try{ showReceipt(_retSale); }catch(e){} }   // বাতিল করলে আগের রসিদে ফিরে যায়
+}
+function returnDeleteFromReceipt(){ if(_rcptSale) deleteSaleRecord(_rcptSale.id); }
 function returnOpenForSale(saleId){
   if(!requireOwnerRole('কাস্টমারের ফেরত নেওয়া')) return;
   const sale = histFindSale(saleId); if(!sale) return;
@@ -44,7 +60,7 @@ function returnOpenForSale(saleId){
     <label style="display:flex;gap:8px;align-items:center;margin:10px 0;"><input type="checkbox" id="rqRestock" checked style="width:20px;height:20px;"> ওষুধ আবার স্টকে তুলুন <span class="row-sub">(ভাঙা/নষ্ট হলে টিক তুলুন)</span></label>
     <div id="rqTotal" style="font-weight:800;font-size:16px;margin:8px 0;">ফেরতের মোট: ৳০</div>
     <button class="btn btn-primary btn-block" onclick="returnSave()">✓ ফেরত সংরক্ষণ করুন</button>
-    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="closeModal('detailModalBackdrop')">বাতিল</button>`;
+    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="returnCancel()">বাতিল</button>`;
   openModal('detailModalBackdrop');
 }
 function _returnCollect(){
