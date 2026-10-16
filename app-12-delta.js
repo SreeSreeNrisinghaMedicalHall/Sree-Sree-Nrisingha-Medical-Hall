@@ -19,7 +19,7 @@ function deltaEnabled(){ try{ return localStorage.getItem('ssn_delta_on')==='1' 
 async function deltaSyncCloudFlag(db, shopCode){
   try{
     const d = await Promise.race([ db.collection('pharmacies').doc(shopCode).get(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), 4000)) ]);
-    if(d && d.exists){ try{ histSyncFromShopDoc(d.data()); }catch(e){ console.warn('ইতিহাস সীমা মেলানো যায়নি', e); } const v = d.data().deltaSync; if(v===true) localStorage.setItem('ssn_delta_cloud','1'); else if(v===false) localStorage.setItem('ssn_delta_cloud','0'); }
+    if(d && d.exists){ try{ histSyncFromShopDoc(d.data()); }catch(e){ console.warn('ইতিহাস সীমা মেলানো যায়নি', e); } try{ doctorsSyncFromShopDoc(d.data()); }catch(e){ console.warn('প্রেসক্রাইবার তালিকা মেলানো যায়নি', e); } const v = d.data().deltaSync; if(v===true) localStorage.setItem('ssn_delta_cloud','1'); else if(v===false) localStorage.setItem('ssn_delta_cloud','0'); }
   }catch(e){ console.warn('deltaSync চিহ্ন পড়া যায়নি (আগেরটাই থাকবে)', e); }
 }
 

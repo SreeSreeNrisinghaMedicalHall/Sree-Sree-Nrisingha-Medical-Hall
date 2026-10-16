@@ -706,11 +706,14 @@ async function restoreCloudBackup(date){
 async function cloudPush(){
   const shopCode = localStorage.getItem('ssn_shop_code');
   if(!shopCode) return;
+  // v42: রিয়েল-টাইম সিঙ্ক চালু থাকলে এন্ট্রি আলাদা কালেকশনে সাথে সাথে যায়। পুরনো এই পদ্ধতি দোকানের মূল ডকুমেন্ট পুরো বদলে দিত
+  // (কর্মচারীর PIN-হ্যাশ/তালিকা, দ্রুত সিঙ্ক, ইতিহাস সীমা, সংরক্ষিত প্রেসক্রাইবার মুছে যেত) — তাই এখন চালু থাকলে কিছুই লেখে না।
+  if(cloudLive){ toast('রিয়েল-টাইম সিঙ্ক চালু — এন্ট্রি সাথে সাথেই ক্লাউডে যায়। ক্লাউডে যায়নি এমন কিছু আছে কিনা দেখতে "এই ফোনে আছে, ক্লাউডে নেই" বোতাম চাপুন।'); return; }
   const db = await initCloud(); if(!db) return;
   try{
     await db.collection('pharmacies').doc(shopCode).set({
       medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, updatedAt: Date.now()
-    });
+    }, {merge:true});
     localStorage.setItem('ssn_last_sync', Date.now());
     localStorage.removeItem('ssn_last_sync_error');
     updateCloudStatus();

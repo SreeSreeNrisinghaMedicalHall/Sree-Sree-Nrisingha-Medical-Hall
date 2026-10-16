@@ -151,6 +151,7 @@
           </select>
         </div>
         <div class="divider"></div>
+        <button type="button" class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="doctorsOpenManager()">👨‍⚕️ সংরক্ষিত প্রেসক্রাইবারের তালিকা (বেছে নিন / একসাথে যোগ করুন)</button>
         <label>প্রেসক্রাইবারের ধরন <span class="tag-en">Prescriber type</span></label>
         <select id="saleDoctorType" onchange="backupPrescriberFields()">
           <option value="">— ধরন বেছে নিন (ঐচ্ছিক) —</option>
@@ -161,19 +162,19 @@
         </select>
         <label style="margin-top:8px;">প্রেসক্রাইবারের নাম (ঐচ্ছিক) <span class="tag-en">Prescriber name</span></label>
         <div style="position:relative;">
-          <input type="text" id="saleDoctorName" placeholder="যেমন: করিম" oninput="renderPrescriberSuggestions();backupPrescriberFields();" onfocus="renderPrescriberSuggestions()">
+          <input type="text" id="saleDoctorName" name="rx_prescriber_nm" autocomplete="off" placeholder="যেমন: করিম" oninput="renderPrescriberSuggestions();backupPrescriberFields();" onfocus="renderPrescriberSuggestions()">
           <div id="prescriberResults" style="position:absolute;left:0;right:0;top:100%;z-index:15;background:#fff;border:1px solid var(--border);border-radius:0 0 10px 10px;max-height:220px;overflow-y:auto;display:none;"></div>
         </div>
         <label>উপাধি/প্রতিষ্ঠান (ঐচ্ছিক) <span class="tag-en">Qualification/Chamber</span></label>
-        <input type="text" id="saleDoctorTitle" placeholder="যেমন: MBBS, মেডিসিন বিশেষজ্ঞ / উপজেলা স্বাস্থ্য কমপ্লেক্স" oninput="backupPrescriberFields()">
+        <input type="text" id="saleDoctorTitle" name="rx_prescriber_title" autocomplete="off" placeholder="যেমন: MBBS, মেডিসিন বিশেষজ্ঞ / উপজেলা স্বাস্থ্য কমপ্লেক্স" oninput="backupPrescriberFields()">
         <label>রোগের নাম (ঐচ্ছিক) <span class="tag-en">Diagnosis</span></label>
-        <input type="text" id="saleDiagnosis" placeholder="যেমন: জ্বর, সর্দি-কাশি">
+        <input type="text" id="saleDiagnosis" name="rx_diag" autocomplete="off" placeholder="যেমন: জ্বর, সর্দি-কাশি">
         <label style="margin-top:8px;" id="patientNameLabel">রোগীর নাম (ঐচ্ছিক)</label>
-        <input type="text" id="patientName" placeholder="খালি রাখলে প্রিন্টে কাস্টমারের নামই যাবে" onblur="syncPatientToSaleCustomer()">
+        <input type="text" id="patientName" name="rx_patient_nm" autocomplete="off" placeholder="খালি রাখলে প্রিন্টে কাস্টমারের নামই যাবে" onblur="syncPatientToSaleCustomer()">
         <label id="patientMobileLabel">রোগীর মোবাইল নম্বর (ঐচ্ছিক)</label>
-        <input type="text" id="patientMobile" placeholder="যেমন: 01xxxxxxxxx" onblur="syncPatientToSaleCustomer()">
+        <input type="text" id="patientMobile" name="rx_patient_mob" autocomplete="off" placeholder="যেমন: 01xxxxxxxxx" onblur="syncPatientToSaleCustomer()">
 <label id="patientAgeLabel">রোগীর বয়স (ঐচ্ছিক)</label>
-<input type="text" id="patientAge" inputmode="numeric" maxlength="12" placeholder="যেমন: ৩৫ অথবা ৮ মাস">
+<div style="display:flex;gap:8px;"><input type="text" id="patientAge" name="rx_patient_age" autocomplete="off" inputmode="numeric" maxlength="12" placeholder="যেমন: ৩৫" style="flex:1;min-width:0;"><select id="patientAgeUnit" style="width:100px;flex-shrink:0;"><option value="">বছর</option><option value="মাস">মাস</option><option value="দিন">দিন</option></select></div>
         <div class="row-sub" style="margin-top:2px;">একই কাস্টমারের ঘরে একাধিক রোগী থাকলে (যেমন বাবার নামে কাস্টমার, কিন্তু ওষুধ ছেলে/মেয়ের জন্য) — এখানে আসল রোগীর নাম দিন, স্লিপে সেটাই ছাপা হবে। বাকি ও হিস্টোরি তবুও ওপরের কাস্টমারের নামেই জমা থাকবে।</div>
         <div id="rxPhotoWrap" style="margin-top:10px;">
 <input type="file" id="rxPhotoInput" accept="image/*" style="display:none;" onchange="pickSaleRxPhoto(event)">
@@ -1016,7 +1017,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

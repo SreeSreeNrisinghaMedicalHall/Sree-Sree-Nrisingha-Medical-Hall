@@ -286,6 +286,7 @@ function getUniquePrescribers(includeHidden){
     const key = s.doctorName.trim().toLowerCase();
     map.set(key, {name:s.doctorName.trim(), title:s.doctorTitle||'', type:s.doctorType||'', ts:s.ts});
   });
+  try{ savedDoctors().forEach(d=>{ const k = (d.name||'').trim().toLowerCase(); if(!k) return; const prev = map.get(k); map.set(k, {name:d.name.trim(), title:d.title||(prev&&prev.title)||'', type:d.type||(prev&&prev.type)||'', ts:(prev&&prev.ts)||1}); }); }catch(e){}   // সংরক্ষিত তালিকা (app-16)
   const hidden = getHiddenPrescribers();
   const all = Array.from(map.values());
   if(includeHidden) return all.map(p=>({...p, hidden:hidden.includes(p.name.trim().toLowerCase())})).sort((a,b)=>b.ts-a.ts);
@@ -422,7 +423,7 @@ function completeSaleInner(){
     payMethod, cashPaidNow, dueAdded, doctorName, doctorTitle, doctorType, diagnosis:diagnosis||null, customerId:custId||null, customerName:cust?cust.name:null,
     patientName:patientName||null, patientMobile:patientMobile||null, rxId:_pendingSaleRxId||null };
   Object.assign(saleRecord, sellerFields());   // এই ফোনের বিক্রেতার নাম (থাকলে) — কে বিক্রি করেছে
-  { const _age = (document.getElementById('patientAge')?.value||'').trim(); if(_age) saleRecord.patientAge = _age; }   // রোগীর বয়স (ঐচ্ছিক)
+  { const _age = (document.getElementById('patientAge')?.value||'').trim(); const _au = document.getElementById('patientAgeUnit')?.value||''; if(_age) saleRecord.patientAge = _age + ((_au && /^[0-9০-৯.]+$/.test(_age)) ? ' '+_au : ''); }   // রোগীর বয়স (ঐচ্ছিক)
   if(cashPaidNow>0 && payChannel!=='cash') saleRecord.payChannel = payChannel;   // বিকাশ/নগদ/রকেট/কার্ড — ক্যাশ বাক্সের হিসাবে ধরা হয় না
 
   // A completed sale naming this prescriber is a strong signal they're in active use again —
@@ -465,7 +466,7 @@ function completeSaleInner(){
   document.getElementById('saleDoctorType').value=''; _savedPrescriber = {name:'', title:'', type:''};
   document.getElementById('saleDiagnosis').value='';
   document.getElementById('patientName').value=''; document.getElementById('patientMobile').value='';
-  { const _a = document.getElementById('patientAge'); if(_a) _a.value=''; try{ clearSaleRxPhoto(); }catch(e){} }
+  { const _a = document.getElementById('patientAge'); if(_a) _a.value=''; const _au = document.getElementById('patientAgeUnit'); if(_au) _au.value=''; try{ clearSaleRxPhoto(); }catch(e){} }
   document.getElementById('payMethod').value='cash'; togglePartialCash();
   _pendingSaleRxId = null;
   renderCart();
