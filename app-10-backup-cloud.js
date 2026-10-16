@@ -896,8 +896,8 @@ async function cloudLogout(){
   updateCloudStatus();
   toast('লগআউট হয়েছে');
 }
-// ===== ব্যাকআপ পাঠানোর রিমাইন্ডার: ৭ দিনের বেশি নিজের Drive/WhatsApp-এ ব্যাকআপ না পাঠালে মনে করায় =====
-const BACKUP_REMIND_DAYS = 7;
+// ===== ব্যাকআপ পাঠানোর রিমাইন্ডার: ১ দিনের বেশি নিজের Drive/WhatsApp-এ ব্যাকআপ না পাঠালে মনে করায় =====
+const BACKUP_REMIND_DAYS = 1;
 function _markBackupShared(){
   try{ localStorage.setItem('ssn_last_manual_backup_ts', String(Date.now())); localStorage.removeItem('ssn_backup_snooze_date'); }catch(e){}
   const b = document.getElementById('backupRemindBar'); if(b) b.remove();
@@ -915,6 +915,7 @@ function checkBackupReminder(){
     if(typeof currentRole==='function' && currentRole()!=='owner') return;
     if(!medicines.length && !sales.length && !customers.length) return;
     if(document.getElementById('backupRemindBar')) return;
+    try{ const sv = parseInt(localStorage.getItem('ssn_srv_drive_last')||'0',10); if(sv && Date.now()-sv < 36*3600*1000) return; }catch(e){}   // সার্ভার অটো ব্যাকআপ চালু ও সফল
     if(localStorage.getItem('ssn_backup_snooze_date')===todayStr()) return;
     const ts = parseInt(localStorage.getItem('ssn_last_manual_backup_ts')||'0',10);
     const days = ts ? Math.floor((Date.now()-ts)/86400000) : Infinity;

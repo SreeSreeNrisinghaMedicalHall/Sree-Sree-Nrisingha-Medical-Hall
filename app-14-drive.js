@@ -68,46 +68,104 @@ function _driveBuildMultipart(meta, json, boundary){
          '\r\n--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+json+'\r\n--'+boundary+'--';
 }
 function _driveFmtSize(n){ n = +n||0; return n>=1048576 ? (n/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(n/1024))+' KB'; }
-function _driveBackupJson(){
-  return JSON.stringify({ medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, exportedAt:new Date().toISOString() });
+function _driveBackupObj(salesArr, purchArr){
+  const o = { medicines, sales: salesArr||sales, purchases: purchArr||purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, exportedAt:new Date().toISOString() };
+  // ইতিহাস সীমা চালু থাকলে "আগের জের" হিসাবও ব্যাকআপে রাখা (শুধু তথ্য হিসেবে; ফেরানোর সময় ব্যবহার হয় না)
+  try{ if(typeof histOn==='function' && histOn()){ o.histFrom = histFrom(); o.histBase = JSON.parse(localStorage.getItem('ssn_hist_base')||'null'); } }catch(e){}
+  return o;
 }
-async function driveBackupNow(){
-  if(typeof requireOwnerRole==='function' && !requireOwnerRole('Drive-এ ব্যাকআপ পাঠানো')) return;
-  if(!navigator.onLine){ toast('ইন্টারনেট নেই — Drive-এ পাঠাতে ইন্টারনেট লাগবে'); return; }
-  if(_driveBusy){ toast('আগের কাজ চলছে, একটু অপেক্ষা করুন'); return; }
+function _driveBackupJson(){ return JSON.stringify(_driveBackupObj()); }
+const DRIVE_KEEP = 30;   // রোজকার ব্যাকআপের সর্বশেষ কতগুলো রাখা হবে (FULL- ফাইল কখনো মোছা হয় না)
+function _driveStamp(){ return new Date().toISOString().replace(/[:T]/g,'-').slice(0,16); }
+async function _driveUpload(json, name){
+  const folderId = await _driveFolderId(true);
+  const meta = {name:name, parents:[folderId], mimeType:'application/json'};
+  const bytes = new Blob([json]).size;
+  let info;
+  if(bytes <= 4500000){
+    const b = 'ssnbnd'+Date.now();
+    const r = await _driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size', {
+      method:'POST', headers:{'Content-Type':'multipart/related; boundary='+b}, body:_driveBuildMultipart(meta, json, b)
+    });
+    info = await r.json();
+  } else {
+    // বড় ফাইল: resumable আপলোড (প্রথমে সেশন খোলা, তারপর একবারে পুরো ফাইল)
+    const s = await _driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size', {
+      method:'POST', headers:{'Content-Type':'application/json; charset=UTF-8'}, body:JSON.stringify(meta)
+    });
+    const loc = s.headers.get('Location');
+    if(!loc) throw new Error('বড় ফাইলের আপলোড শুরু করা যায়নি');
+    const up = await fetch(loc, {method:'PUT', headers:{'Content-Type':'application/json'}, body:json});
+    if(!up.ok) throw new Error('আপলোড ব্যর্থ ('+up.status+')');
+    info = await up.json();
+  }
+  return {info:info, bytes:bytes, folderId:folderId};
+}
+// শুধু "nrisingha-backup-" দিয়ে শুরু হওয়া রোজকার ফাইল মোছে; "FULL-" ফাইলে হাত দেয় না। ব্যর্থ হলে ব্যাকআপের কোনো ক্ষতি নেই।
+async function _drivePrune(folderId){
+  try{
+    const q = "'"+folderId+"' in parents and trashed=false";
+    const r = await _driveFetch('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name,createdTime)&orderBy=createdTime%20desc&pageSize=200');
+    const files = ((await r.json()).files || []).filter(f=>/^nrisingha-backup-/.test(f.name||''));
+    const old = files.slice(DRIVE_KEEP);
+    for(const f of old){ try{ await _driveFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id), {method:'DELETE'}); }catch(e){ console.warn('prune failed', e); } }
+  }catch(e){ console.warn('drive prune skipped', e); }
+}
+async function driveBackupNow(opts){
+  const auto = !!(opts && opts.auto);
+  if(!auto && typeof requireOwnerRole==='function' && !requireOwnerRole('Drive-এ ব্যাকআপ পাঠানো')) return;
+  if(!navigator.onLine){ if(!auto) toast('ইন্টারনেট নেই — Drive-এ পাঠাতে ইন্টারনেট লাগবে'); return; }
+  if(_driveBusy){ if(!auto) toast('আগের কাজ চলছে, একটু অপেক্ষা করুন'); return; }
   _driveBusy = true;
   try{
     const json = _driveBackupJson();
-    toast('Google লগইন/অনুমতি নিয়ে Drive-এ পাঠানো হচ্ছে…');
-    const folderId = await _driveFolderId(true);
-    const stamp = new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);
-    const meta = {name:'nrisingha-backup-'+stamp+'.json', parents:[folderId], mimeType:'application/json'};
-    const bytes = new Blob([json]).size;
-    let info;
-    if(bytes <= 4500000){
-      const b = 'ssnbnd'+Date.now();
-      const r = await _driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size', {
-        method:'POST', headers:{'Content-Type':'multipart/related; boundary='+b}, body:_driveBuildMultipart(meta, json, b)
-      });
-      info = await r.json();
-    } else {
-      // বড় ফাইল: resumable আপলোড (প্রথমে সেশন খোলা, তারপর একবারে পুরো ফাইল)
-      const s = await _driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size', {
-        method:'POST', headers:{'Content-Type':'application/json; charset=UTF-8'}, body:JSON.stringify(meta)
-      });
-      const loc = s.headers.get('Location');
-      if(!loc) throw new Error('বড় ফাইলের আপলোড শুরু করা যায়নি');
-      const up = await fetch(loc, {method:'PUT', headers:{'Content-Type':'application/json'}, body:json});
-      if(!up.ok) throw new Error('আপলোড ব্যর্থ ('+up.status+')');
-      info = await up.json();
-    }
+    if(auto){
+      // অটো চেষ্টায় লগইন জানালা না এলে/আটকে গেলে ৪৫ সেকেন্ড পর ছেড়ে দেওয়া হয়
+      await Promise.race([_driveGetToken(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),45000))]);
+    } else toast('Google লগইন/অনুমতি নিয়ে Drive-এ পাঠানো হচ্ছে…');
+    const up = await _driveUpload(json, 'nrisingha-backup-'+_driveStamp()+'.json');
     try{ localStorage.setItem('ssn_last_drive_backup_ts', String(Date.now())); }catch(e){}
     try{ _markBackupShared(); }catch(e){}
     driveUpdateInfo();
-    toast('✓ Drive-এ ব্যাকআপ জমা হয়েছে ('+_driveFmtSize(info && info.size || bytes)+')');
+    toast('✓ Drive-এ ব্যাকআপ জমা হয়েছে ('+_driveFmtSize(up.info && up.info.size || up.bytes)+')');
+    await _drivePrune(up.folderId);
   }catch(e){
     console.error(e);
-    alert('Drive-এ পাঠানো যায়নি:\n'+(e && e.message ? e.message : e)+'\n\nআপনার ডাটা অক্ষত আছে। পরে আবার চেষ্টা করুন, বা "ব্যাকআপ শেয়ার করুন" দিয়ে পাঠান।');
+    if(!auto) alert('Drive-এ পাঠানো যায়নি:\n'+(e && e.message ? e.message : e)+'\n\nআপনার ডাটা অক্ষত আছে। পরে আবার চেষ্টা করুন, বা "ব্যাকআপ শেয়ার করুন" দিয়ে পাঠান।');
+  }finally{ _driveBusy = false; }
+}
+// পূর্ণ আর্কাইভ: ইতিহাস সীমা চালু থাকলে ক্লাউড থেকে পুরনো বিক্রি-ক্রয় একবার এনে পুরো ইতিহাসসহ আলাদা ফাইল রাখে। এই ফাইল কখনো নিজে মোছা হয় না।
+async function driveFullArchive(){
+  if(typeof requireOwnerRole==='function' && !requireOwnerRole('পূর্ণ আর্কাইভ')) return;
+  if(!navigator.onLine){ toast('ইন্টারনেট নেই — ইন্টারনেট লাগবে'); return; }
+  if(_driveBusy){ toast('আগের কাজ চলছে, একটু অপেক্ষা করুন'); return; }
+  const limited = (typeof histOn==='function') && histOn();
+  if(limited){
+    if(!cloudReady()){ toast('পুরনো ডাটা আনতে ক্লাউড সংযোগ লাগবে'); return; }
+    if(!confirm('পূর্ণ আর্কাইভের জন্য ক্লাউড থেকে '+histBn(histDateStr())+'-এর আগের সব বিক্রি-ক্রয় একবার আনা হবে।\n\nযত রেকর্ড, তত Firebase "পড়া" খরচ হবে (শুধু এই একবার)।\n\nচালিয়ে যাবেন?')) return;
+  } else if(!confirm('পুরো ডাটার একটা আলাদা "FULL" ব্যাকআপ Drive-এ রাখা হবে। এটা কখনো নিজে মোছা হবে না।\n\nচালিয়ে যাবেন?')) return;
+  _driveBusy = true;
+  try{
+    let allSales = sales, allPurch = purchases;
+    if(limited){
+      toast('ক্লাউড থেকে পুরনো বিক্রি-ক্রয় আনা হচ্ছে…');
+      const hf = histFrom();
+      const [s,p] = await Promise.all(['sales','purchases'].map(n=>shopColl(n).where('ts','<',hf).get({source:'server'})));
+      try{ deltaCountReads(s.size+p.size); }catch(e){}
+      const sIds = new Set(sales.map(x=>x.id)), pIds = new Set(purchases.map(x=>x.id));
+      allSales = sales.concat(s.docs.filter(d=>!sIds.has(d.id)).map(deltaRec));
+      allPurch = purchases.concat(p.docs.filter(d=>!pIds.has(d.id)).map(deltaRec));
+    }
+    toast('Google লগইন/অনুমতি নিয়ে Drive-এ পাঠানো হচ্ছে…');
+    const json = JSON.stringify(_driveBackupObj(allSales, allPurch));
+    const up = await _driveUpload(json, 'FULL-nrisingha-backup-'+_driveStamp()+'.json');
+    try{ localStorage.setItem('ssn_last_drive_backup_ts', String(Date.now())); }catch(e){}
+    try{ _markBackupShared(); }catch(e){}
+    driveUpdateInfo();
+    toast('✓ পূর্ণ আর্কাইভ জমা হয়েছে ('+allSales.length+'টা বিক্রি, '+_driveFmtSize(up.info && up.info.size || up.bytes)+')');
+  }catch(e){
+    console.error(e);
+    alert('পূর্ণ আর্কাইভ পাঠানো যায়নি:\n'+(e && e.message ? e.message : e)+'\n\nআপনার ডাটা অক্ষত আছে।');
   }finally{ _driveBusy = false; }
 }
 async function driveRestoreList(){
@@ -120,7 +178,7 @@ async function driveRestoreList(){
     const fid = await _driveFolderId(false);
     if(!fid){ toast('Drive-এ এই অ্যাপের কোনো ব্যাকআপ পাওয়া যায়নি'); return; }
     const q = "'"+fid+"' in parents and trashed=false";
-    const r = await _driveFetch('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name,createdTime,size)&orderBy=createdTime%20desc&pageSize=30');
+    const r = await _driveFetch('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name,createdTime,size)&orderBy=createdTime%20desc&pageSize=50');
     const files = (await r.json()).files || [];
     document.getElementById('detailModalTitle').textContent = '☁ Google Drive-এর ব্যাকআপ';
     document.getElementById('detailModalContent').innerHTML = files.length
@@ -156,3 +214,101 @@ function driveUpdateInfo(){
 }
 // লগইন জানালা যাতে ট্যাপের সাথে সাথে খোলে, তাই গুগলের স্ক্রিপ্ট আগেভাগে নামিয়ে রাখা (ইন্টারনেট থাকলে)
 try{ setTimeout(()=>{ driveUpdateInfo(); if(navigator.onLine) _driveLoadGis().catch(()=>{}); }, 4000); }catch(e){}
+// ===== সার্ভার অটো Drive ব্যাকআপ (v39): Firebase Blaze প্ল্যান + একবারের সার্ভার সেটআপ লাগে (FUNCTIONS-SETUP.txt) =====
+// চালু হলে সার্ভার প্রতি রাতে নিজে Drive-এ পাঠায় — অ্যাপ বন্ধ থাকলেও। এই বোতাম শুধু Google-এর অনুমতি সার্ভারকে দেয়।
+const SRV_REGION = 'asia-south1';
+function _srvUrl(name){
+  let cfg = {}; try{ cfg = JSON.parse(localStorage.getItem('ssn_cloud_config')||'{}'); }catch(e){}
+  if(!cfg.projectId) throw new Error('আগে ক্লাউড সংযোগ করুন');
+  return 'https://'+SRV_REGION+'-'+cfg.projectId+'.cloudfunctions.net/'+name;
+}
+async function _srvCall(name, data){
+  const u = (window.firebase && firebase.auth && firebase.auth().currentUser) || null;
+  if(!u) throw new Error('নিরাপদ লগইন (মালিকের ইমেইল) লাগবে');
+  const tok = await u.getIdToken();
+  let r;
+  try{ r = await fetch(_srvUrl(name), {method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+tok}, body:JSON.stringify({data:data||{}})}); }
+  catch(e){ throw new Error('SERVER_UNREACHABLE'); }   // ফাংশন ডিপ্লয় না থাকলেও ব্রাউজারে এভাবেই দেখায়
+  let j = null; try{ j = await r.json(); }catch(e){}
+  if(r.status===404) throw new Error('SERVER_UNREACHABLE');
+  if(!r.ok || (j && j.error)) throw new Error((j && j.error && j.error.message) || ('HTTP '+r.status));
+  return j && j.result;
+}
+function _srvErr(e){
+  const m = e && e.message || String(e);
+  if(m==='SERVER_UNREACHABLE') return 'সার্ভার ফাংশন পাওয়া যায়নি। ইন্টারনেট দেখুন; আর Blaze প্ল্যান ও একবারের সার্ভার সেটআপ (FUNCTIONS-SETUP.txt) না করা থাকলে আগে সেটা করতে হবে।';
+  if(m==='no_refresh_token') return 'Google স্থায়ী অনুমতি দেয়নি। myaccount.google.com/permissions খুলে এই অ্যাপের অনুমতি সরিয়ে দিন, তারপর আবার "চালু করুন" চাপুন।';
+  return m;
+}
+function srvDriveInfoSet(t){ const el = document.getElementById('srvDriveInfo'); if(el) el.textContent = t; }
+async function srvDriveRefresh(quiet){
+  try{
+    if(typeof currentRole==='function' && currentRole()!=='owner') return;
+    if(!navigator.onLine) return;
+    const st = await _srvCall('driveStatus', {shop: localStorage.getItem('ssn_shop_code')});
+    if(st.linked){
+      localStorage.setItem('ssn_srv_drive_on','1');
+      if(st.lastOk) localStorage.setItem('ssn_srv_drive_last', String(st.lastOk)); else localStorage.removeItem('ssn_srv_drive_last');
+      srvDriveInfoSet('✓ চালু আছে। '+(st.lastOk ? 'শেষ সফল: '+new Date(st.lastOk).toLocaleString('bn-BD')+' ('+st.lastFile+')' : 'প্রথম ব্যাকআপ আজ রাত ২টায় হবে, বা "এখনই পরীক্ষা চালান" চাপুন।')+(st.lastError ? '\n⚠️ শেষ সমস্যা: '+st.lastError : ''));
+    } else {
+      localStorage.removeItem('ssn_srv_drive_on'); localStorage.removeItem('ssn_srv_drive_last');
+      srvDriveInfoSet('বন্ধ আছে।');
+    }
+  }catch(e){ if(!quiet) srvDriveInfoSet('অবস্থা জানা যায়নি: '+_srvErr(e)); }
+}
+async function srvDriveLink(){
+  if(typeof requireOwnerRole==='function' && !requireOwnerRole('সার্ভার অটো ব্যাকআপ চালু করা')) return;
+  if(!navigator.onLine){ toast('ইন্টারনেট লাগবে'); return; }
+  if(!confirm('সার্ভার অটো ব্যাকআপ চালু করবেন?\n\n• Firebase Blaze প্ল্যান ও একবারের সার্ভার সেটআপ আগে করা থাকতে হবে।\n• এরপর প্রতি রাত ২টায় সার্ভার নিজে আপনার Drive-এ ব্যাকআপ পাঠাবে।\n• Google অনুমতি চাইবে (শুধু এই অ্যাপের নিজের ফাইলের জন্য)।')) return;
+  try{
+    srvDriveInfoSet('Google অনুমতি নেওয়া হচ্ছে…');
+    await _driveLoadGis();
+    const code = await new Promise((res, rej)=>{
+      const cl = google.accounts.oauth2.initCodeClient({
+        client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE, ux_mode: 'popup',
+        callback: r=>{ if(r && r.code) res(r.code); else rej(new Error((r && r.error) || 'অনুমতি পাওয়া যায়নি')); },
+        error_callback: e=>rej(new Error('Google জানালা খোলেনি বা বন্ধ হয়েছে'+(e && e.type ? ' ('+e.type+')' : '')))
+      });
+      cl.requestCode();
+    });
+    srvDriveInfoSet('সার্ভারে যুক্ত করা হচ্ছে…');
+    await _srvCall('driveLink', {code: code, shop: localStorage.getItem('ssn_shop_code')});
+    toast('✓ সার্ভার অটো ব্যাকআপ চালু হয়েছে');
+    await srvDriveRefresh();
+  }catch(e){ console.error(e); srvDriveInfoSet('চালু করা যায়নি: '+_srvErr(e)); alert('সার্ভার অটো ব্যাকআপ চালু করা যায়নি:\n'+_srvErr(e)); }
+}
+async function srvDriveUnlink(){
+  if(typeof requireOwnerRole==='function' && !requireOwnerRole('সার্ভার অটো ব্যাকআপ বন্ধ করা')) return;
+  if(!confirm('সার্ভার অটো ব্যাকআপ বন্ধ করবেন?\n\nDrive-এ আগের ফাইলগুলো থেকে যাবে। Google-এর অনুমতিও বাতিল হবে।')) return;
+  try{ await _srvCall('driveUnlink', {shop: localStorage.getItem('ssn_shop_code')}); toast('সার্ভার অটো ব্যাকআপ বন্ধ করা হয়েছে'); await srvDriveRefresh(); }
+  catch(e){ alert('বন্ধ করা যায়নি:\n'+_srvErr(e)); }
+}
+async function srvDriveRunNow(){
+  if(typeof requireOwnerRole==='function' && !requireOwnerRole('সার্ভার ব্যাকআপ পরীক্ষা')) return;
+  try{
+    srvDriveInfoSet('সার্ভার এখন ব্যাকআপ বানাচ্ছে… (১ মিনিট মতো লাগতে পারে)');
+    const r = await _srvCall('driveRunNow', {shop: localStorage.getItem('ssn_shop_code')});
+    if(r && r.ok) toast('✓ সার্ভার থেকে Drive-এ ব্যাকআপ গেছে ('+r.file+')'); else alert('সার্ভার ব্যাকআপ হয়নি:\n'+((r && r.error) || 'অজানা'));
+    await srvDriveRefresh();
+  }catch(e){ srvDriveInfoSet('পরীক্ষা ব্যর্থ: '+_srvErr(e)); alert('পরীক্ষা চালানো যায়নি:\n'+_srvErr(e)); }
+}
+// সার্ভার অটো চালু থাকলে ও ৩৬ ঘণ্টার মধ্যে সফল হলে ফোনের নিজের চেষ্টা/রিমাইন্ডার দরকার নেই
+function srvDriveRecentlyOk(){ const t = parseInt(localStorage.getItem('ssn_srv_drive_last')||'0',10); return !!(t && Date.now()-t < 36*3600*1000); }
+try{ setTimeout(()=>{ if(localStorage.getItem('ssn_srv_drive_on')) srvDriveRefresh(true); }, 2000); }catch(e){}
+
+// দিনে একবার (অ্যাপ খোলা থাকলে) নিজে Drive-এ পাঠানোর চেষ্টা। লগইন জানালা না এলে চুপচাপ ছেড়ে দেয় — তখন রিমাইন্ডার বার দেখাবে।
+function driveAutoTry(){
+  try{
+    if(typeof currentRole==='function' && currentRole()!=='owner') return;
+    if(!navigator.onLine || _driveBusy) return;
+    if(srvDriveRecentlyOk()) return;   // সার্ভার নিজেই পাঠাচ্ছে
+    if(!(medicines.length || sales.length || customers.length)) return;
+    if(!localStorage.getItem('ssn_drive_linked')) return;   // একবার Drive যুক্ত করার পরেই
+    const last = parseInt(localStorage.getItem('ssn_last_drive_backup_ts')||'0',10);
+    if(Date.now()-last < 20*3600*1000) return;
+    if(localStorage.getItem('ssn_drive_auto_date')===todayStr()) return;   // দিনে একবারের বেশি জানালা খুলবে না
+    localStorage.setItem('ssn_drive_auto_date', todayStr());
+    driveBackupNow({auto:true});
+  }catch(e){}
+}
+try{ setTimeout(driveAutoTry, 3500); setInterval(driveAutoTry, 60*60*1000); }catch(e){}

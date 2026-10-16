@@ -375,6 +375,19 @@
         <div id="driveBackupInfo" class="row-sub" style="margin-top:6px;"></div>
         <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="driveBackupNow()">☁ সরাসরি Google Drive-এ ব্যাকআপ পাঠান</button>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="driveRestoreList()">☁ Google Drive থেকে ফেরান</button>
+        <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="driveFullArchive()">🗄 পূর্ণ আর্কাইভ Drive-এ রাখুন (মোছা হয় না)</button>
+        <div class="row-sub" style="margin-top:6px;">রোজকার ব্যাকআপের সর্বশেষ ৩০টা Drive-এ থাকে, পুরনোগুলো নিজে মুছে যায়। "FULL" আর্কাইভ মাসে/তিন মাসে একবার রাখুন — এটা কখনো মোছা হয় না।</div>
+        <div style="margin-top:14px;padding:10px 12px;border:1px dashed var(--line,#bbb);border-radius:12px;">
+          <div class="row-title">🤖 সার্ভার অটো Drive ব্যাকআপ</div>
+          <div class="row-sub" style="margin-top:4px;line-height:1.5;">Firebase Blaze প্ল্যানে গেলে চালু করুন। তখন অ্যাপ বন্ধ থাকলেও প্রতি রাত ২টায় সার্ভার নিজে আপনার Drive-এ ব্যাকআপ পাঠাবে। (একবারের সার্ভার সেটআপ লাগে — FUNCTIONS-SETUP.txt)</div>
+          <div id="srvDriveInfo" class="row-sub" style="margin-top:6px;white-space:pre-line;"></div>
+          <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="srvDriveLink()">▶ সার্ভার অটো ব্যাকআপ চালু করুন</button>
+          <div class="grid2" style="margin-top:8px;">
+            <button class="btn btn-outline btn-sm" onclick="srvDriveRunNow()">এখনই পরীক্ষা চালান</button>
+            <button class="btn btn-outline btn-sm" onclick="srvDriveUnlink()">বন্ধ করুন</button>
+          </div>
+          <button class="btn btn-outline btn-sm btn-block" style="margin-top:8px;" onclick="srvDriveRefresh()">অবস্থা দেখুন</button>
+        </div>
         <div id="driveDirectInfo" class="row-sub" style="margin-top:6px;"></div>
         <div id="autoBackupInfo" class="row-sub" style="margin-top:10px;padding:8px 10px;border-radius:10px;background:var(--green-soft,#e8f5e9);">🛡 স্বয়ংক্রিয় দৈনিক ব্যাকআপ: ক্লাউড সংযোগ থাকলে অ্যাপ নিজেই প্রতিদিন একটা আলাদা কপি রাখে — আপনাকে কিছু করতে হবে না।</div>
         <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openCloudBackupList()">🗓 স্বয়ংক্রিয় ব্যাকআপ থেকে ফেরান</button>
