@@ -161,6 +161,27 @@ let _invLinesVal = '', _invPayVal = '', _invSpecialVal = '', _invSpecialUsed = 0
 // বিশেষ ছাড় (Special Discount): ইনভয়েসের নিচে শুধু নির্দিষ্ট ওষুধের নামে থাকে। চূড়ান্ত দেয় টাকায় এটা বাদ গেছে, কিন্তু সব ওষুধে ভাগ হওয়া ঠিক নয় —
 // স্কয়ারের ইনভয়েসে সাধারণত "Net Invoice Amount"-এর পরে আলাদা লেখা থাকে (চূড়ান্ত টাকায় বাদ নেই) — গুণক = চূড়ান্ত টাকা ÷ মোট TP। যদি চূড়ান্ত টাকায় বাদ দেওয়া থাকে (টিক),
 // তাহলে গুণক = (চূড়ান্ত + বিশেষ ছাড়) ÷ মোট TP। দুই ক্ষেত্রেই বিশেষ ছাড়টা শুধু ওই ওষুধের লাইন থেকে বাদ যায়।
+// একাধিক ওষুধের একসাথে বিশেষ ছাড় — TP-র অনুপাতে ভাগ; শেষেরটায় অবশিষ্ট বসে, যাতে যোগফল হুবহু মোট ছাড়ের সমান হয়
+function splitSpecialDiscount(total, amounts){
+  const t = +total || 0, a = (amounts||[]).map(x=>+x||0);
+  const sum = a.reduce((s,x)=>s+x,0);
+  if(!(t>0) || !a.length || !(sum>0) || a.some(x=>x<=0)) return null;
+  const out = []; let used = 0;
+  a.forEach((x,i)=>{
+    if(i===a.length-1){ out.push(Math.round((t-used)*100)/100); return; }
+    const v = Math.round(t*x/sum*100)/100; out.push(v); used += v;
+  });
+  return out;
+}
+function splitSpecialRun(){
+  const bn = s=>String(s||'').replace(/[০-৯]/g, d=>'০১২৩৪৫৬৭৮৯'.indexOf(d));
+  const total = parseFloat(bn(document.getElementById('pSplitTotal').value)) || 0;
+  const amounts = bn(document.getElementById('pSplitTps').value).split(/[,\s]+/).filter(Boolean).map(Number);
+  const out = document.getElementById('pSplitOut');
+  const r = amounts.every(x=>!isNaN(x)) ? splitSpecialDiscount(total, amounts) : null;
+  if(!r){ out.textContent = 'মোট ছাড় আর প্রতিটা ওষুধের TP (শূন্যের বেশি সংখ্যা, কমা দিয়ে) ঠিকভাবে লিখুন'; return; }
+  out.innerHTML = r.map((v,i)=>`${i+1} নম্বর ওষুধ (TP ${amounts[i]}): ছাড় <b>৳${v}</b>`).join('<br>') + `<br><span style="font-weight:400;">যোগফল ৳${+r.reduce((s,x)=>s+x,0).toFixed(2)}</span>`;
+}
 function _invSpecialIncl(){ const c = document.getElementById('pInvSpecialIncl'); return !!(c && c.checked); }
 function _invSpecial(){ return Math.max(0, parseFloat((document.getElementById('pInvSpecial')||{}).value)||0); }
 function _lineSpecial(){ return Math.max(0, parseFloat((document.getElementById('pLineSpecial')||{}).value)||0); }
