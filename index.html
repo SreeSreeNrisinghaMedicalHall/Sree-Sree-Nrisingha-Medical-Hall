@@ -608,6 +608,7 @@ Fexo 120mg
       <div><label style="font-size:13px;">শুধু TP (ভ্যাট-ডিসকাউন্ট ছাড়া)</label><input type="number" id="pLineTP" min="0" step="any" placeholder="যেমন: 374.82" oninput="purchaseRecalc('tp')"></div>
       <div><label style="font-size:13px;">ভ্যাট-ডিসকাউন্ট সহ মোট দাম</label><input type="number" id="pLineTotal" min="0" step="any" placeholder="যেমন: 516.50" oninput="purchaseRecalc('total')"></div>
     </div>
+    <div style="margin:2px 0 6px;"><label style="font-size:13px;">এই ওষুধের বিশেষ ছাড় (৳ মোট) — ইনভয়েসের নিচে শুধু এই ওষুধের নামে আলাদা ছাড় থাকলে</label><input type="number" id="pLineSpecial" min="0" step="any" placeholder="যেমন: 39.46 (না থাকলে ফাঁকা)" oninput="purchaseRecalc('qty')"></div>
     <div class="row-sub" style="margin:2px 0 4px;">"শুধু TP" দিলে নিচের ইনভয়েস সমন্বয় থেকে ভ্যাট ও ছাড় নিজে মিশবে। "ভ্যাট-ডিসকাউন্ট সহ" দিলে সমন্বয় লাগবে না, ওটাই চূড়ান্ত ধরা হবে।</div>
     <details id="pInvAdj" style="margin:8px 0 2px;">
       <summary id="pInvAdjSum" style="cursor:pointer;font-weight:600;">⚙ ইনভয়েস সমন্বয় (ভ্যাট/ছাড় নিচে আলাদা থাকলে)</summary>
@@ -616,6 +617,9 @@ Fexo 120mg
         <div><label>সব ওষুধের মোট TP (৳)</label><input type="number" id="pInvLines" min="0" step="any" placeholder="যেমন: 2406.32" oninput="invAdjChanged()"></div>
         <div><label>চূড়ান্ত দেয় টাকা (৳) — ভ্যাট/ছাড় সহ</label><input type="number" id="pInvPay" min="0" step="any" placeholder="যেমন: 2800.95" oninput="invAdjChanged()"></div>
       </div>
+      <div style="margin:6px 0;"><label>বিশেষ ছাড় মোট (৳) — ইনভয়েসের নিচে নির্দিষ্ট ওষুধের নামে যা আলাদা লেখা (Special Discount)</label><input type="number" id="pInvSpecial" min="0" step="any" placeholder="যেমন: 39.46 (না থাকলে ফাঁকা)" oninput="invAdjChanged()"></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0;"><input type="checkbox" id="pInvSpecialIncl" onchange="invAdjChanged()" style="width:20px;height:20px;flex-shrink:0;"> "চূড়ান্ত দেয় টাকা" থেকে বিশেষ ছাড় আগেই বাদ দেওয়া আছে (সাধারণত না — স্কয়ারে "Net Invoice Amount"-এর পরে আলাদা লেখা থাকে, তাই টিক দেবেন না)</label>
+      <div class="row-sub" style="margin:0 0 6px;">বিশেষ ছাড় সব ওষুধে ভাগ হবে না। একাধিক ওষুধে বিশেষ ছাড় থাকলে সবগুলোর যোগফল এই ঘরে একবার দিন, তারপর প্রতিটা ওষুধের এন্ট্রিতে "এই ওষুধের বিশেষ ছাড়" ঘরে তার নিজের ছাড়টা বসান।</div>
       <button type="button" class="btn btn-sm btn-outline" onclick="clearInvAdj()">✕ নতুন ইনভয়েস — সমন্বয় মুছুন</button>
     </details>
     <div class="row-sub" id="pCalcHint" style="display:none;margin-top:4px;font-weight:600;color:var(--primary-dark,#0a5c36);"></div>

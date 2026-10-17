@@ -24,18 +24,26 @@ function _driveGetToken(){
     try{
       if(_driveToken && Date.now() < _driveTokenExp - 60000) return resolve(_driveToken);
       await _driveLoadGis();
+      // v46: যে গুগল অ্যাকাউন্টে Drive ব্যাকআপ যায় তার ইমেইল একবার মনে রাখি, পরেরবার "অ্যাকাউন্ট বাছুন" পর্দা ছাড়াই সেটাতে ঢোকে (ফোনে একাধিক গুগল অ্যাকাউন্ট থাকলে রোজ এই পর্দা আসত)
+      const _hint = localStorage.getItem('ssn_drive_email') || '';
       const client = google.accounts.oauth2.initTokenClient({
-        client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE,
+        client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE, ...(_hint ? {hint:_hint} : {}),
         callback: r=>{
           if(r && r.access_token){
             _driveToken = r.access_token; _driveTokenExp = Date.now() + (+r.expires_in||3600)*1000;
             try{ localStorage.setItem('ssn_drive_linked','1'); }catch(e){}
+            try{
+              if(!localStorage.getItem('ssn_drive_email')){
+                fetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', {headers:{Authorization:'Bearer '+_driveToken}})
+                  .then(x=>x.json()).then(j=>{ const em = j && j.user && j.user.emailAddress; if(em) localStorage.setItem('ssn_drive_email', em); }).catch(()=>{});
+              }
+            }catch(e){}
             resolve(_driveToken);
           } else reject(new Error((r && (r.error_description||r.error)) || 'লগইন হয়নি'));
         },
         error_callback: e=>reject(new Error(e && e.type==='popup_closed' ? 'লগইন জানালা বন্ধ করা হয়েছে' : (e && (e.message||e.type)) || 'লগইন ব্যর্থ'))
       });
-      client.requestAccessToken({prompt: localStorage.getItem('ssn_drive_linked') ? '' : 'consent'});
+      client.requestAccessToken({prompt: localStorage.getItem('ssn_drive_linked') ? '' : 'consent', ...(_hint ? {hint:_hint} : {})});
     }catch(e){ reject(e); }
   });
 }

@@ -157,10 +157,16 @@ function applyEstSell(which){
 }
 let _lastDiscPct = '';
 // ইনভয়েস সমন্বয়: গুণক = চূড়ান্ত দেয় টাকা ÷ লাইনগুলোর মোট। একবার দিলে পরের এন্ট্রিতেও থাকে (নতুন ইনভয়েসে মুছে দিন)।
-let _invLinesVal = '', _invPayVal = '';
+let _invLinesVal = '', _invPayVal = '', _invSpecialVal = '', _invSpecialUsed = 0, _invSpecialInclVal = false;
+// বিশেষ ছাড় (Special Discount): ইনভয়েসের নিচে শুধু নির্দিষ্ট ওষুধের নামে থাকে। চূড়ান্ত দেয় টাকায় এটা বাদ গেছে, কিন্তু সব ওষুধে ভাগ হওয়া ঠিক নয় —
+// স্কয়ারের ইনভয়েসে সাধারণত "Net Invoice Amount"-এর পরে আলাদা লেখা থাকে (চূড়ান্ত টাকায় বাদ নেই) — গুণক = চূড়ান্ত টাকা ÷ মোট TP। যদি চূড়ান্ত টাকায় বাদ দেওয়া থাকে (টিক),
+// তাহলে গুণক = (চূড়ান্ত + বিশেষ ছাড়) ÷ মোট TP। দুই ক্ষেত্রেই বিশেষ ছাড়টা শুধু ওই ওষুধের লাইন থেকে বাদ যায়।
+function _invSpecialIncl(){ const c = document.getElementById('pInvSpecialIncl'); return !!(c && c.checked); }
+function _invSpecial(){ return Math.max(0, parseFloat((document.getElementById('pInvSpecial')||{}).value)||0); }
+function _lineSpecial(){ return Math.max(0, parseFloat((document.getElementById('pLineSpecial')||{}).value)||0); }
 function _invFactor(){
   const L = parseFloat(document.getElementById('pInvLines').value)||0, P = parseFloat(document.getElementById('pInvPay').value)||0;
-  return (L>0 && P>0) ? P/L : 1;
+  return (L>0 && P>0) ? (P + (_invSpecialIncl() ? _invSpecial() : 0))/L : 1;   // চূড়ান্ত টাকায় বিশেষ ছাড় বাদ থাকলে (টিক দিলে) তবেই ফেরত যোগ করি
 }
 // "শুধু TP" দিলে ইনভয়েস-গুণক লাগে (ভ্যাট-ছাড় মেশে); "ভ্যাট-ডিসকাউন্ট সহ" দিলে ওটাই চূড়ান্ত — গুণক লাগে না।
 // "শুধু TP" ও "ভ্যাট-ডিসকাউন্ট সহ মোট" ঘর দুটো এখন হিসাব করে নিজে ভরে যায় (ধূসর রঙে, dataset.auto='1');
@@ -174,32 +180,35 @@ function _autoFillLineBoxes(paid, fct, qty, sellRef){
     if(ph!==undefined) el.placeholder = ph;
   };
   set('pLineTotal', paid>0 ? +paid.toFixed(2) : '');
-  const tpVal = (paid>0 && fct!==1) ? +(paid/fct).toFixed(2) : '';
+  const tpVal = (paid>0 && fct!==1) ? +((paid+_lineSpecial())/fct).toFixed(2) : '';
   const est = (sellRef>0 && qty>0) ? ('অনুমান ≈ '+ +(sellRef*MRP_TP_RATIO*qty).toFixed(0)) : 'যেমন: 374.82';
   set('pLineTP', tpVal, tpVal===''? est : 'যেমন: 374.82');
 }
 function _lineTotalEff(){
   const tp = _typedVal('pLineTP');
   const fin = _typedVal('pLineTotal');
-  if(tp>0) return tp*_invFactor();
+  if(tp>0) return Math.max(0, tp*_invFactor() - _lineSpecial());
   if(fin>0) return fin;
   return 0;
 }
 function _invAdjSummary(){
   const f = _invFactor(), d = document.getElementById('pInvAdj'), sm = document.getElementById('pInvAdjSum');
   if(!d || !sm) return;
-  if(f!==1){ sm.textContent = '⚙ ইনভয়েস সমন্বয় চালু — গুণক ×'+f.toFixed(4); sm.style.color = 'var(--primary,#1e5e45)'; d.open = true; }
+  const _sp = _invSpecial(), _left = +(_sp - _invSpecialUsed).toFixed(2);
+  if(f!==1){ sm.textContent = '⚙ ইনভয়েস সমন্বয় চালু — গুণক ×'+f.toFixed(4)+(_sp>0 ? ' • বিশেষ ছাড় ৳'+_sp+(_left>0.01 ? ' (এখনো বসানো বাকি ৳'+_left+')' : ' (বসানো হয়েছে)') : ''); sm.style.color = 'var(--primary,#1e5e45)'; d.open = true; }
   else { sm.textContent = '⚙ ইনভয়েস সমন্বয় (ভ্যাট/ছাড় নিচে আলাদা থাকলে)'; sm.style.color = ''; }
 }
 function invAdjChanged(){
   _invLinesVal = document.getElementById('pInvLines').value;
   _invPayVal = document.getElementById('pInvPay').value;
+  _invSpecialVal = (document.getElementById('pInvSpecial')||{}).value||''; _invSpecialInclVal = _invSpecialIncl();
   _invAdjSummary();
   purchaseRecalc('qty');
 }
 function clearInvAdj(){
-  _invLinesVal = ''; _invPayVal = ''; _lastCredit = false; const _pc = document.getElementById('pCredit'); if(_pc) _pc.checked = false;
+  _invLinesVal = ''; _invPayVal = ''; _invSpecialVal = ''; _invSpecialUsed = 0; _invSpecialInclVal = false; _lastCredit = false; const _pc = document.getElementById('pCredit'); if(_pc) _pc.checked = false;
   document.getElementById('pInvLines').value = ''; document.getElementById('pInvPay').value = '';
+  { const _s = document.getElementById('pInvSpecial'); if(_s) _s.value = ''; const _l = document.getElementById('pLineSpecial'); if(_l) _l.value = ''; const _c = document.getElementById('pInvSpecialIncl'); if(_c) _c.checked = false; }
   _invAdjSummary(); purchaseRecalc('qty');
 }
 function _r4(x){ return Math.round(x*10000)/10000; }
@@ -240,7 +249,7 @@ function purchaseRecalc(src){
     else parts.push(`বিক্রয়মূল্য ৳${sellRef} − ${pctNow}% = ৳${rate}/একক`);
   }
   if(tpTyped>0){
-    if(fct!==1) parts.push(`TP ৳${tpTyped} × ${fct.toFixed(4)} (ভ্যাট-ছাড় মিলিয়ে) = ৳${+(tpTyped*fct).toFixed(2)}`);
+    if(fct!==1) parts.push(`TP ৳${tpTyped} × ${fct.toFixed(4)} (ভ্যাট-ছাড় মিলিয়ে) = ৳${+(tpTyped*fct).toFixed(2)}` + (_lineSpecial()>0 ? ` − বিশেষ ছাড় ৳${_lineSpecial()} = ৳${+(tpTyped*fct-_lineSpecial()).toFixed(2)}` : ''));
     else parts.push('⚠ শুধু TP দিয়েছেন কিন্তু ইনভয়েস সমন্বয় (ভ্যাট ও ছাড়) দেননি — ক্রয়মূল্য ভ্যাট ছাড়া, কম ধরা হচ্ছে');
   }
   if(paid>0 && qty>0){
@@ -304,6 +313,7 @@ function openPurchaseModal(id, back){
   document.getElementById('pDiscPct').dataset.auto = (!p && _lastDiscPct) ? '0' : '1';
   document.getElementById('pInvLines').value = p ? '' : _invLinesVal;
   document.getElementById('pInvPay').value = p ? '' : _invPayVal;
+  { const _s = document.getElementById('pInvSpecial'); if(_s) _s.value = p ? '' : _invSpecialVal; const _l = document.getElementById('pLineSpecial'); if(_l) _l.value = ''; const _c = document.getElementById('pInvSpecialIncl'); if(_c) _c.checked = p ? false : _invSpecialInclVal; }
   _invAdjSummary();
   document.getElementById('pCalcHint').style.display = 'none';
   document.getElementById('pSell').value = '';
@@ -459,6 +469,7 @@ function _savePurchaseCore(newSell){
   const supId = document.getElementById('pSupplier').value;
   const sup = suppliers.find(s=>s.id===supId);
   const credit = !!document.getElementById('pCredit').checked && !!supId;
+  if(!editingPurchaseId){ try{ _invSpecialUsed += _lineSpecial(); }catch(e){} }   // কত বিশেষ ছাড় ইতিমধ্যে বসানো হলো (বাকিটা সমন্বয়ের শিরোনামে দেখায়)
 
   let newPurchaseId = null;
   let _editOldQty = 0, _editOldMedId = null;   // ক্লাউডে পার্থক্য পাঠাতে পুরোনো মান লাগবে
