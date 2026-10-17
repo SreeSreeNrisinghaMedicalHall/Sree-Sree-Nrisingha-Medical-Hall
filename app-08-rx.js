@@ -467,7 +467,7 @@ function showPrescriptionReceipt(rec){
         <div class="rx-line">Amtali, Barguna.</div>
         <div class="rx-line">Mobile : 01739097390</div>
       </div>
-      ${rec.serial ? `<div style="text-align:center;font-size:1.6em;font-weight:900;color:#000;border:3px solid #000;border-radius:6px;padding:2px 0;margin:4px 0 6px;letter-spacing:0.5px;">Rx No: ${rec.serial}</div>` : ''}
+      ${rec.serial ? `<div style="text-align:center;font-size:1.25em;font-weight:900;color:#000;border:2px solid #000;border-radius:5px;padding:1px 0;margin:4px 0 6px;">Rx No: ${rec.serial}</div>` : ''}
       <div class="rx-patient-row">
         <span>Name: ${escapeHtml(rec.patientName)}</span>
         <span>${rec.patientAge?'Age: '+escapeHtml(rec.patientAge):''}</span>
@@ -726,6 +726,7 @@ function resellFromHistoryByAmount(saleId, idPrefix){
 
   closeModal('ledgerModalBackdrop');
   closeModal('detailModalBackdrop');
+  closeModal('receiptModalBackdrop');
   showSection('sale');
   const cust = sale.customerId ? customers.find(c=>c.id===sale.customerId) : null;
   if(cust){ renderSaleCustomerSelect(); pickSaleCustomer(cust.id, cust.name); }

@@ -757,7 +757,7 @@ function showReceipt(sale, keepSplit){
         <div class="r-sub" style="color:#000;"><b style="font-size:1.2em;font-weight:800;letter-spacing:0.3px;">মোবাইল: ০১৭৩৯০৯৭৩৯০</b></div>
         <div class="r-sub" style="color:#000;">সোনাখালী, আমতলী, বরগুনা।</div>
       </div>
-      ${sale.serial ? `<div style="text-align:center;font-size:1.7em;font-weight:900;color:#000;border:3px solid #000;border-radius:6px;padding:3px 0;margin:2px 0 8px;letter-spacing:0.5px;">রশিদ নং: ${rcptBn(sale.serial)}</div>` : ''}
+      ${sale.serial ? `<div style="text-align:center;font-size:1.25em;font-weight:900;color:#000;border:2px solid #000;border-radius:5px;padding:1px 0;margin:2px 0 6px;">রশিদ নং: ${rcptBn(sale.serial)}</div>` : ''}
       ${rcptDupes(sale).length ? `<div class="no-print" style="background:#fdecea;color:#b42318;font-weight:700;border-radius:8px;padding:6px 8px;margin:0 0 8px;font-size:13px;">⚠️ এই নম্বরে আরও ${rcptDupes(sale).length}টা রশিদ আছে (দুই ফোনে একই সময়ে বিক্রি হয়েছিল) — রশিদ নং ${rcptBn(sale.serial)} লিখে খুঁজে দেখুন</div>` : ''}
       ${sale.isReturn ? '<div style="text-align:center;font-weight:800;font-size:1.15em;margin:2px 0 6px;border:2px solid #000;padding:2px;">↩ ফেরত রসিদ</div>' : ''}
       <div class="r-meta">
@@ -798,6 +798,7 @@ function showReceipt(sale, keepSplit){
     document.getElementById('rcptSplitChk').checked = _rcptSplit;
   }catch(e){}
   try{ returnUpdateReceiptBtn(sale); }catch(e){}
+  try{ const _rb = document.getElementById('rcptResellBox'); if(_rb){ _rb.style.display = (sale.isReturn || !(sale.items||[]).length) ? 'none' : 'block'; const _ri = document.getElementById('rcptResell_amt'); if(_ri && !keepSplit) _ri.value = ''; } }catch(e){}
   openModal('receiptModalBackdrop');
 }
 function shopQrHtml(){

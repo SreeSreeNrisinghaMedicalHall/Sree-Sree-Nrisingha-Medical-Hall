@@ -973,6 +973,13 @@ Fexo 120mg
     <div id="rcptSplitBox" class="no-print" style="display:none;margin-top:12px;padding:10px;background:#f7faf8;border:1px solid #d6e4dc;border-radius:12px;">
       <label style="display:flex;gap:8px;align-items:center;font-weight:600;"><input type="checkbox" id="rcptSplitChk" onchange="toggleReceiptSplit(this.checked)" style="width:20px;height:20px;"> বাকির ভাগ (কার নামে কত) রসিদে দেখান</label>
     </div>
+    <div id="rcptResellBox" class="no-print" style="display:none;margin-top:12px;padding:10px;background:#fbf6e6;border:1px solid #e6d9a8;border-radius:12px;" onclick="event.stopPropagation()">
+      <div class="row-sub" style="margin-bottom:6px;font-weight:600;">🔁 এই হারে (এই রশিদের ওষুধগুলোর অনুপাতে) কত টাকার ওষুধ দেবেন</div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="rcptResell_amt" placeholder="কত টাকার ওষুধ" inputmode="numeric" style="flex:1;min-width:0;">
+        <button type="button" class="btn btn-gold" style="flex-shrink:0;" onclick="if(_rcptSale) resellFromHistoryByAmount(_rcptSale.id,'rcptResell')">পাঠান</button>
+      </div>
+    </div>
     <div class="grid2 no-print" style="margin-top:14px;">
       <button class="btn btn-outline" onclick="printReceipt()">🖨 প্রিন্ট করুন</button>
       <button class="btn btn-gold" onclick="shareReceipt()">⇪ শেয়ার করুন</button>

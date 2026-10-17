@@ -497,7 +497,7 @@ function showLabTestReceipt(rec){
         <div class="r-sub" style="color:#000;">সোনাখালী, আমতলী, বরগুনা।</div>
       </div>
       <div class="r-sub" style="text-align:center;font-weight:700;margin:6px 0;">টেস্ট বিল</div>
-      ${rec.serial ? `<div style="text-align:center;font-size:1.7em;font-weight:900;color:#000;border:3px solid #000;border-radius:6px;padding:3px 0;margin:2px 0 8px;letter-spacing:0.5px;">টেস্ট নং: ${rcptBn(rec.serial)}</div>` : ''}
+      ${rec.serial ? `<div style="text-align:center;font-size:1.25em;font-weight:900;color:#000;border:2px solid #000;border-radius:5px;padding:1px 0;margin:2px 0 6px;">টেস্ট নং: ${rcptBn(rec.serial)}</div>` : ''}
       <div class="r-meta">
         <span>তারিখ: ${dateStr}</span>
         <span>রোগী: ${escapeHtml(rec.patientName)}</span>
@@ -540,7 +540,7 @@ function showLabTestResultReport(id){
         <div class="r-sub" style="color:#000;">সোনাখালী, আমতলী, বরগুনা।</div>
       </div>
       <div class="r-sub" style="text-align:center;font-weight:700;margin:6px 0;">টেস্ট রেজাল্ট রিপোর্ট</div>
-      ${rec.serial ? `<div style="text-align:center;font-size:1.7em;font-weight:900;color:#000;border:3px solid #000;border-radius:6px;padding:3px 0;margin:2px 0 8px;letter-spacing:0.5px;">টেস্ট নং: ${rcptBn(rec.serial)}</div>` : ''}
+      ${rec.serial ? `<div style="text-align:center;font-size:1.25em;font-weight:900;color:#000;border:2px solid #000;border-radius:5px;padding:1px 0;margin:2px 0 6px;">টেস্ট নং: ${rcptBn(rec.serial)}</div>` : ''}
       <div class="r-meta">
         <span>তারিখ: ${dateStr}</span>
         <span>রোগী: ${escapeHtml(rec.patientName)}</span>

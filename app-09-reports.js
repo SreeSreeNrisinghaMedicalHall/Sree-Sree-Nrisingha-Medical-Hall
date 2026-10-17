@@ -268,7 +268,7 @@ function showReportSales(keepQuery){
   if(keepQuery!==true){ _rsQuery = ''; _rsLimit = 100; }
   document.getElementById('detailModalContent').innerHTML = `
     <div style="position:sticky;top:0;background:#fff;z-index:5;padding:2px 0 8px;">
-      <input type="text" id="rsSearch" placeholder="🔍 তারিখ (০৫/১০) বা রোগী/কাস্টমারের নাম লিখে খুঁজুন" autocomplete="off" value="${escapeHtml(_rsQuery)}" oninput="_rsQuery=this.value;_rsLimit=100;_rsRender()" style="width:100%;box-sizing:border-box;">
+      <input type="text" id="rsSearch" placeholder="🔍 তারিখ (০৫/১০), নাম বা রশিদ নম্বর লিখে খুঁজুন" autocomplete="off" value="${escapeHtml(_rsQuery)}" oninput="_rsQuery=this.value;_rsLimit=100;_rsRender()" style="width:100%;box-sizing:border-box;">
     </div>
     <div id="rsList"></div>`;
   _rsRender();
@@ -280,8 +280,14 @@ function _rsRender(){
   const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
   const sAll = repSales().filter(s=>inRange(s.date, range)).sort((a,b)=>b.ts-a.ts);
   const ltAll = labTests.filter(lt=>inRange(lt.date, range) && labTestTotals(lt).price>0).sort((a,b)=>b.ts-a.ts);
-  const sIn = tokens.length ? sAll.filter(s=>{ const h=_rsHay(s); return tokens.every(t=>h.indexOf(t)>=0); }) : sAll;
-  const ltIn = tokens.length ? ltAll.filter(lt=>{ const d=String(lt.date||''); const [yy,mm,dd]=d.split('-'); const h=[lt.patientName||'', d.replace(/-/g,'/'), (dd&&mm&&yy)?(dd+'/'+mm+'/'+yy+' '+dd+'/'+mm):''].join(' ').toLowerCase(); return tokens.every(t=>h.indexOf(t)>=0); }) : ltAll;
+  // রশিদ নম্বর: শুধু সংখ্যা (বা #সংখ্যা) লিখলে ঠিক সেই নম্বরের রশিদ সবার আগে আসে; #দিয়ে লিখলে শুধু সেটাই
+  const _exS = serialQuery(sAll, _rsQuery) || [], _exL = serialQuery(ltAll, _rsQuery) || [];
+  const _hashOnly = /^\s*[#＃]/.test(_rsQuery||'');
+  const _exSIds = new Set(_exS.map(x=>x.id)), _exLIds = new Set(_exL.map(x=>x.id));
+  const _sRest = (tokens.length && !_hashOnly) ? sAll.filter(s=>{ if(_exSIds.has(s.id)) return false; const h=_rsHay(s); return tokens.every(t=>h.indexOf(t)>=0); }) : [];
+  const sIn = tokens.length ? (_exS.concat(_sRest)) : sAll;
+  const ltIn0 = tokens.length ? ltAll.filter(lt=>{ const d=String(lt.date||''); const [yy,mm,dd]=d.split('-'); const h=[lt.patientName||'', d.replace(/-/g,'/'), (dd&&mm&&yy)?(dd+'/'+mm+'/'+yy+' '+dd+'/'+mm):''].join(' ').toLowerCase(); return tokens.every(t=>h.indexOf(t)>=0); }) : ltAll;
+  const ltIn = tokens.length ? _exL.concat(_hashOnly ? [] : ltIn0.filter(x=>!_exLIds.has(x.id))) : ltIn0;
   const shown = sIn.slice(0, _rsLimit);
   const rows = shown.map(s=>{
     const cust = s.customerName || 'ওয়াক-ইন কাস্টমার';
@@ -289,7 +295,7 @@ function _rsRender(){
     const patientLine = (pn && pn !== (s.customerName||'').trim()) ? ` <span style="color:#7a5b00;font-weight:700;">• রোগী: ${escapeHtml(pn)}</span>` : '';
     const rid = 'rsResell_'+s.id;
     return `<div class="row-item" style="flex-wrap:wrap;">
-      <div onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;flex:1 1 60%;min-width:0;"><div class="row-title">${escapeHtml(cust)}${patientLine}</div><div class="row-sub">${s.items.length} আইটেম • ${s.date}${s.seller?' • '+escapeHtml(s.seller):''}</div></div>
+      <div onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;flex:1 1 60%;min-width:0;"><div class="row-title">${rcptTag(s)}${escapeHtml(cust)}${patientLine}</div><div class="row-sub">${s.items.length} আইটেম • ${s.date}${s.seller?' • '+escapeHtml(s.seller):''}</div></div>
       <div class="row-right" onclick="openReceiptFromReport('${s.id}')" style="cursor:pointer;"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">${salePayLabel(s)}</div></div>
       <div style="flex:1 1 100%;display:flex;gap:6px;margin-top:6px;" onclick="event.stopPropagation()">
         <input type="text" id="${rid}_amt" placeholder="🔁 এই হারে কত টাকার ওষুধ" inputmode="numeric" style="flex:1;min-width:0;">
@@ -300,7 +306,7 @@ function _rsRender(){
   const testRows = ltIn.map(lt=>{
     const x = labTestTotals(lt);
     return `<div class="row-item" onclick="closeModal('detailModalBackdrop');viewLabTestReceipt('${lt.id}')" style="cursor:pointer;">
-      <div><div class="row-title">${escapeHtml(lt.patientName)} <span class="tag-en">টেস্ট</span></div><div class="row-sub">${(lt.tests||[]).length} আইটেম • ${lt.date}</div></div>
+      <div><div class="row-title">${serialTag(lt)}${escapeHtml(lt.patientName)} <span class="tag-en">টেস্ট</span></div><div class="row-sub">${(lt.tests||[]).length} আইটেম • ${lt.date}</div></div>
       <div class="row-right"><div class="row-title">${fmt(x.price)}</div><div class="row-sub">নগদ</div></div>
     </div>`;
   }).join('');
