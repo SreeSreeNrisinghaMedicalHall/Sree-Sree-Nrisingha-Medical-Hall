@@ -460,7 +460,7 @@ function saveLabTest(){
     Object.assign(existing, fields);
     rec = existing;
   } else {
-    rec = { id: uid(), ts: Date.now(), date: todayStr(), ...fields };
+    rec = { id: uid(), ts: Date.now(), date: todayStr(), serial: serialNext('lab', labTests), ...fields };   // টেস্ট নং — একবার বসলে আর বদলায় না
     labTests.unshift(rec);
   }
   _adjustSupplyStock(supplies, -1);
@@ -497,6 +497,7 @@ function showLabTestReceipt(rec){
         <div class="r-sub" style="color:#000;">সোনাখালী, আমতলী, বরগুনা।</div>
       </div>
       <div class="r-sub" style="text-align:center;font-weight:700;margin:6px 0;">টেস্ট বিল</div>
+      ${rec.serial ? `<div style="text-align:center;font-size:1.7em;font-weight:900;color:#000;border:3px solid #000;border-radius:6px;padding:3px 0;margin:2px 0 8px;letter-spacing:0.5px;">টেস্ট নং: ${rcptBn(rec.serial)}</div>` : ''}
       <div class="r-meta">
         <span>তারিখ: ${dateStr}</span>
         <span>রোগী: ${escapeHtml(rec.patientName)}</span>
@@ -539,6 +540,7 @@ function showLabTestResultReport(id){
         <div class="r-sub" style="color:#000;">সোনাখালী, আমতলী, বরগুনা।</div>
       </div>
       <div class="r-sub" style="text-align:center;font-weight:700;margin:6px 0;">টেস্ট রেজাল্ট রিপোর্ট</div>
+      ${rec.serial ? `<div style="text-align:center;font-size:1.7em;font-weight:900;color:#000;border:3px solid #000;border-radius:6px;padding:3px 0;margin:2px 0 8px;letter-spacing:0.5px;">টেস্ট নং: ${rcptBn(rec.serial)}</div>` : ''}
       <div class="r-meta">
         <span>তারিখ: ${dateStr}</span>
         <span>রোগী: ${escapeHtml(rec.patientName)}</span>
@@ -582,7 +584,9 @@ function deleteLabTestFromModal(){
   if(!requireOwnerRole('টেস্ট রিপোর্ট মুছে ফেলা')) return;
   if(!_currentLabTestId) return;
   if(!confirm('এই টেস্ট রিপোর্টটা মুছে ফেলতে চান?')) return;
+  const _delLab = labTests.find(t=>t.id===_currentLabTestId);
   labTests = labTests.filter(t=>t.id!==_currentLabTestId);
+  serialAfterDelete('lab', labTests, _delLab);
   addTombstoneLogged(_currentLabTestId);
   save(DB_KEYS.labTest, labTests);
   if(cloudReady()){
@@ -598,7 +602,7 @@ function renderLabTestList(){
   const el = document.getElementById('testList');
   if(!el) return;
   const q = (document.getElementById('testSearch')?.value||'').trim().toLowerCase();
-  const filtered = rankBy([...labTests].sort((a,b)=>b.ts-a.ts), q, t=>t.patientName, [t=>t.patientMobile, t=>(t.tests||[]).map(x=>x.name).join(' | ')]);
+  const filtered = serialQuery(labTests, q) || rankBy([...labTests].sort((a,b)=>b.ts-a.ts), q, t=>t.patientName, [t=>t.patientMobile, t=>(t.tests||[]).map(x=>x.name).join(' | ')]);
   const rows = filtered.slice(0, testShowCount);
   el.innerHTML = rows.length ? rows.map(t=>{
     const dt = new Date(t.ts||Date.now());
@@ -608,7 +612,7 @@ function renderLabTestList(){
     const pending = (t.tests||[]).some(x=>!x.result);
     const due = labTestDue(t);
     return `<div class="row-item" onclick="viewLabTestReceipt('${t.id}')" style="cursor:pointer;">
-      <div><div class="row-title">${escapeHtml(t.patientName)} <span class="tag-en">${escapeHtml(testNames)}</span></div>
+      <div><div class="row-title">${serialTag(t)}${escapeHtml(t.patientName)} <span class="tag-en">${escapeHtml(testNames)}</span></div>
       <div class="row-sub">${resultSummary?escapeHtml(resultSummary)+' • ':''}${dateStr}</div></div>
       <div class="row-right">
         ${pending?'<span class="badge badge-red">ফলাফল বাকি</span>':''}

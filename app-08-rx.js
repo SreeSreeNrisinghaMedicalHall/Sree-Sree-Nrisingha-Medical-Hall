@@ -403,7 +403,7 @@ function savePrescription(){
   });
   if(!meds.length){ toast('অন্তত একটা ওষুধ যোগ করুন'); return; }
   const rec = {
-    id:uid(), ts:Date.now(), date:todayStr(),
+    id:uid(), ts:Date.now(), date:todayStr(), serial: serialNext('rx', prescriptions),   // Rx নং — একবার বসলে আর বদলায় না
     patientName,
     patientAge: document.getElementById('rxPatientAge').value.trim(),
     patientGender: document.getElementById('rxPatientGender').value,
@@ -467,6 +467,7 @@ function showPrescriptionReceipt(rec){
         <div class="rx-line">Amtali, Barguna.</div>
         <div class="rx-line">Mobile : 01739097390</div>
       </div>
+      ${rec.serial ? `<div style="text-align:center;font-size:1.6em;font-weight:900;color:#000;border:3px solid #000;border-radius:6px;padding:2px 0;margin:4px 0 6px;letter-spacing:0.5px;">Rx No: ${rec.serial}</div>` : ''}
       <div class="rx-patient-row">
         <span>Name: ${escapeHtml(rec.patientName)}</span>
         <span>${rec.patientAge?'Age: '+escapeHtml(rec.patientAge):''}</span>
@@ -517,7 +518,9 @@ function deletePrescriptionFromModal(){
   if(!requireOwnerRole('প্রেসক্রিপশন মুছে ফেলা')) return;
   if(!_currentRxId) return;
   if(!confirm('এই প্রেসক্রিপশনটা মুছে ফেলতে চান?')) return;
+  const _delRx = prescriptions.find(r=>r.id===_currentRxId);
   prescriptions = prescriptions.filter(r=>r.id!==_currentRxId);
+  serialAfterDelete('rx', prescriptions, _delRx);
   addTombstoneLogged(_currentRxId);
   save(DB_KEYS.prescription, prescriptions);
   if(cloudReady()){
@@ -747,7 +750,7 @@ function renderPrescriptionList(){
   const el = document.getElementById('rxList');
   if(!el) return;
   const q = (document.getElementById('rxSearch')?.value||'').trim().toLowerCase();
-  const filtered = rankBy([...prescriptions].sort((a,b)=>b.ts-a.ts), q, r=>r.patientName, [r=>r.patientMobile, r=>r.cc]);
+  const filtered = serialQuery(prescriptions, q) || rankBy([...prescriptions].sort((a,b)=>b.ts-a.ts), q, r=>r.patientName, [r=>r.patientMobile, r=>r.cc]);
   const rows = filtered.slice(0, rxShowCount);
   el.innerHTML = rows.length ? rows.map(r=>{
     const dt = new Date(r.ts||Date.now());
@@ -755,7 +758,7 @@ function renderPrescriptionList(){
     const medNames = (r.meds||[]).map(m=>m.medName).join(', ');
     const ccSnippet = (r.cc||'').split('\n')[0];
     return `<div class="row-item" onclick="viewPrescription('${r.id}')" style="cursor:pointer;">
-      <div><div class="row-title">${escapeHtml(r.patientName)} ${ccSnippet?'<span class="tag-en">'+escapeHtml(ccSnippet)+'</span>':''}</div>
+      <div><div class="row-title">${serialTag(r)}${escapeHtml(r.patientName)} ${ccSnippet?'<span class="tag-en">'+escapeHtml(ccSnippet)+'</span>':''}</div>
       <div class="row-sub">${escapeHtml(medNames)} • ${dateStr}</div></div>
     </div>`;
   }).join('') : `<div class="empty-state">${q?'এই শর্তে কোনো প্রেসক্রিপশন নেই':'এখনো কোনো প্রেসক্রিপশন তৈরি হয়নি'}</div>`;

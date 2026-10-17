@@ -389,6 +389,31 @@ function rcptShowList(list){
     </div>`).join('');
   openModal('detailModalBackdrop');
 }
+// টেস্ট (kind='lab') ও প্রেসক্রিপশন (kind='rx') — প্রত্যেকের নিজস্ব আলাদা ক্রম; নিয়ম রশিদ নম্বরের মতোই
+function serialMaxOf(list){ let m = 0; (list||[]).forEach(x=>{ const n = parseInt(x.serial,10); if(n>m) m = n; }); return m; }
+function serialNext(kind, list){
+  const key = 'ssn_serial_hi_'+kind;
+  let hi = 0; try{ hi = parseInt(localStorage.getItem(key),10) || 0; }catch(e){}
+  const n = Math.max(hi, serialMaxOf(list)) + 1;
+  try{ localStorage.setItem(key, String(n)); }catch(e){}
+  return n;
+}
+function serialAfterDelete(kind, list, rec){
+  try{
+    const key = 'ssn_serial_hi_'+kind;
+    const hi = parseInt(localStorage.getItem(key),10) || 0, n = parseInt(rec && rec.serial,10);
+    if(n && n===hi) localStorage.setItem(key, String(serialMaxOf(list)));
+  }catch(e){}
+}
+// খোঁজার ঘরে শুধু একটা সংখ্যা (বা #সংখ্যা) লিখলে ঠিক সেই নম্বরের রেকর্ড; না থাকলে null (তখন সাধারণ খোঁজা চলে)
+function serialQuery(list, rawQ){
+  const t = String(rawQ||'').trim().replace(/^#/,'').replace(/[০-৯]/g, d=>'০১২৩৪৫৬৭৮৯'.indexOf(d));
+  if(!/^[1-9][0-9]{0,6}$/.test(t)) return null;
+  const n = parseInt(t,10);
+  const hits = (list||[]).filter(x=>parseInt(x.serial,10)===n);
+  return hits.length ? hits : null;
+}
+function serialTag(x){ return (x && x.serial) ? '<b style="color:#1f5c46;">#'+rcptBn(x.serial)+'</b> ' : ''; }
 async function rcptSearchGo(){
   const el = document.getElementById('rcptSearchNo'); if(!el) return;
   const raw = (el.value||'').trim().replace(/^#/,'').replace(/[০-৯]/g, d=>'০১২৩৪৫৬৭৮৯'.indexOf(d));
