@@ -108,3 +108,20 @@ async function doctorsBulkSave(){
   await _doctorsCommit(list, '✓ '+a+' জন নতুন'+(u?', '+u+' জন হালনাগাদ':'')+' সংরক্ষিত');
   doctorsOpenManager();
 }
+
+// ব্যাকআপ থেকে ফেরানোর সময়: এই ফোনে/ক্লাউডে যে নাম আগে থেকে আছে সেগুলো বদলায় না, শুধু যেগুলো নেই সেগুলো যোগ হয়
+async function doctorsMergeFromBackup(arr){
+  if(!Array.isArray(arr) || !arr.length) return 0;
+  const list = savedDoctors(); let added = 0;
+  arr.forEach(d=>{
+    if(!d || !d.name || !String(d.name).trim()) return;
+    const k = _dkey(d.name);
+    if(list.some(x=>_dkey(x.name)===k)) return;
+    list.push({id:d.id||uid(), name:String(d.name).trim(), title:d.title||'', type:d.type||''}); added++;
+  });
+  if(!added) return 0;
+  _doctorsWrite(list);
+  let owner = false; try{ owner = currentRole()==='owner'; }catch(e){}
+  if(owner) await _doctorsPush(list); else { try{ localStorage.setItem('ssn_saved_doctors_dirty','1'); }catch(e){} }
+  return added;
+}

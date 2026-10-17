@@ -645,6 +645,7 @@ async function safeRestore(incoming, label, opts){
     }catch(e){ console.error('restore cloud push failed', e); toast('⚠️ ফোনে ফেরানো হয়েছে, কিন্তু ক্লাউডে পাঠানো যায়নি — ইন্টারনেট চেক করুন'); }
   }
   try{ autoRecoverMissingCustomers('safeRestore:'+label); }catch(e){}
+  try{ if(typeof doctorsMergeFromBackup==='function') doctorsMergeFromBackup(incoming.savedDoctors); }catch(e){ console.warn('সংরক্ষিত প্রেসক্রাইবার ফেরানো যায়নি', e); }
   toast('✓ পুনরুদ্ধার সম্পন্ন ('+label+') — ফোনের বর্তমান তথ্য অক্ষত আছে'+(totalAdded?', ফেরানো নতুন রেকর্ড: '+totalAdded+'টি (কাস্টমার '+(addedCount.customers||0)+', বিক্রয় '+(addedCount.sales||0)+', ওষুধ '+(addedCount.medicines||0)+')':' , নতুন কোনো রেকর্ড লাগেনি'));
   try{ renderDashboard(); rerenderCurrentSection(); }catch(e){}
   return totalAdded;

@@ -1,6 +1,6 @@
 /* ---------------- Backup / Restore ---------------- */
 function exportData(){
-  const data = { medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, exportedAt:new Date().toISOString() };
+  const data = { medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, savedDoctors:(typeof savedDoctors==='function'?savedDoctors():[]), exportedAt:new Date().toISOString() };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -646,7 +646,7 @@ async function autoDailyCloudBackup(force){
     if(!force && localStorage.getItem('ssn_last_auto_backup_date')===today) return;
     if(!medicines.length && !sales.length && !customers.length) return; // খালি অবস্থা ব্যাকআপ করার মানে নেই
     _autoBackupBusy = true;
-    const payload = JSON.stringify({ medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices });
+    const payload = JSON.stringify({ medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, savedDoctors:(typeof savedDoctors==='function'?savedDoctors():[]) });
     const total = Math.ceil(payload.length / AUTO_BACKUP_CHUNK);
     const coll = shopColl('backups');
     for(let i=0;i<total;i++){
@@ -939,7 +939,7 @@ setInterval(checkBackupReminder, 60*60*1000);
 async function shareBackup(){
   // আগে এই ব্যাকআপে payments/labTests/prescriptions/referrers/testPrices বাদ যেত (বাকির লেনদেন-ইতিহাসসহ) —
   // এখন exportData()-এর মতোই সবকিছু থাকে।
-  const data = { medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, exportedAt:new Date().toISOString() };
+  const data = { medicines, sales, purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, savedDoctors:(typeof savedDoctors==='function'?savedDoctors():[]), exportedAt:new Date().toISOString() };
   const json = JSON.stringify(data);
   // "শেয়ার ব্যর্থ (NotAllowedError)"-এর কারণ: অ্যান্ড্রয়েড ব্রাউজার .json ফাইল শেয়ার করতে দেয় না (শুধু .txt, .csv, ছবি, PDF ইত্যাদি
   // অনুমোদিত), আর আগের কোড ব্যর্থ হলে আবার শেয়ার চেষ্টা করত — কিন্তু একটা ট্যাপে একবারই শেয়ার করা যায়, দ্বিতীয়বার

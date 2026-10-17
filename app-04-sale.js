@@ -466,7 +466,7 @@ function completeSaleInner(){
   document.getElementById('saleDoctorType').value=''; _savedPrescriber = {name:'', title:'', type:''};
   document.getElementById('saleDiagnosis').value='';
   document.getElementById('patientName').value=''; document.getElementById('patientMobile').value='';
-  { const _a = document.getElementById('patientAge'); if(_a) _a.value=''; const _au = document.getElementById('patientAgeUnit'); if(_au) _au.value=''; try{ clearSaleRxPhoto(); }catch(e){} }
+  { const _a = document.getElementById('patientAge'); if(_a) _a.value=''; const _au = document.getElementById('patientAgeUnit'); if(_au) _au.selectedIndex = 0; try{ clearSaleRxPhoto(); }catch(e){} }
   document.getElementById('payMethod').value='cash'; togglePartialCash();
   _pendingSaleRxId = null;
   renderCart();

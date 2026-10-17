@@ -69,7 +69,7 @@ function _driveBuildMultipart(meta, json, boundary){
 }
 function _driveFmtSize(n){ n = +n||0; return n>=1048576 ? (n/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(n/1024))+' KB'; }
 function _driveBackupObj(salesArr, purchArr){
-  const o = { medicines, sales: salesArr||sales, purchases: purchArr||purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, exportedAt:new Date().toISOString() };
+  const o = { medicines, sales: salesArr||sales, purchases: purchArr||purchases, customers, suppliers, payments, labTests, prescriptions, referrers, testPrices, savedDoctors:(typeof savedDoctors==='function'?savedDoctors():[]), exportedAt:new Date().toISOString() };
   // ইতিহাস সীমা চালু থাকলে "আগের জের" হিসাবও ব্যাকআপে রাখা (শুধু তথ্য হিসেবে; ফেরানোর সময় ব্যবহার হয় না)
   try{ if(typeof histOn==='function' && histOn()){ o.histFrom = histFrom(); o.histBase = JSON.parse(localStorage.getItem('ssn_hist_base')||'null'); } }catch(e){}
   return o;
