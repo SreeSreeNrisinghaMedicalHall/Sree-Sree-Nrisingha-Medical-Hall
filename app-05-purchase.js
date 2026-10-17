@@ -157,10 +157,10 @@ function applyEstSell(which){
 }
 let _lastDiscPct = '';
 // ইনভয়েস সমন্বয়: গুণক = চূড়ান্ত দেয় টাকা ÷ লাইনগুলোর মোট। একবার দিলে পরের এন্ট্রিতেও থাকে (নতুন ইনভয়েসে মুছে দিন)।
-let _invLinesVal = '', _invPayVal = '', _invSpecialVal = '', _invSpecialUsed = 0, _invSpecialInclVal = false;
+let _invLinesVal = '', _invPayVal = '', _invSpecialVal = '', _invSpecialUsed = 0, _invSpecialInclVal = true;
 // বিশেষ ছাড় (Special Discount): ইনভয়েসের নিচে শুধু নির্দিষ্ট ওষুধের নামে থাকে। চূড়ান্ত দেয় টাকায় এটা বাদ গেছে, কিন্তু সব ওষুধে ভাগ হওয়া ঠিক নয় —
-// স্কয়ারের ইনভয়েসে সাধারণত "Net Invoice Amount"-এর পরে আলাদা লেখা থাকে (চূড়ান্ত টাকায় বাদ নেই) — গুণক = চূড়ান্ত টাকা ÷ মোট TP। যদি চূড়ান্ত টাকায় বাদ দেওয়া থাকে (টিক),
-// তাহলে গুণক = (চূড়ান্ত + বিশেষ ছাড়) ÷ মোট TP। দুই ক্ষেত্রেই বিশেষ ছাড়টা শুধু ওই ওষুধের লাইন থেকে বাদ যায়।
+// স্কয়ারের ইনভয়েসে "Less Discount Amount"-এর ভেতরেই বিশেষ ছাড় ধরা থাকে (যেমন ২৫৫.৩৫ = অন্যদের ২% ১৩৩.৬৫ + SECLO ১২১.৭০), তাই "Net Invoice Amount"-এ বাদ গেছে।
+// ডিফল্ট (টিক): গুণক = (চূড়ান্ত + বিশেষ ছাড়) ÷ মোট TP। টিক তুললে (চূড়ান্ত টাকায় বাদ নেই): গুণক = চূড়ান্ত ÷ মোট TP। দুই ক্ষেত্রেই বিশেষ ছাড়টা শুধু ওই ওষুধের লাইন থেকে বাদ যায়।
 // একাধিক ওষুধের একসাথে বিশেষ ছাড় — TP-র অনুপাতে ভাগ; শেষেরটায় অবশিষ্ট বসে, যাতে যোগফল হুবহু মোট ছাড়ের সমান হয়
 function splitSpecialDiscount(total, amounts){
   const t = +total || 0, a = (amounts||[]).map(x=>+x||0);
@@ -227,9 +227,9 @@ function invAdjChanged(){
   purchaseRecalc('qty');
 }
 function clearInvAdj(){
-  _invLinesVal = ''; _invPayVal = ''; _invSpecialVal = ''; _invSpecialUsed = 0; _invSpecialInclVal = false; _lastCredit = false; const _pc = document.getElementById('pCredit'); if(_pc) _pc.checked = false;
+  _invLinesVal = ''; _invPayVal = ''; _invSpecialVal = ''; _invSpecialUsed = 0; _invSpecialInclVal = true; _lastCredit = false; const _pc = document.getElementById('pCredit'); if(_pc) _pc.checked = false;
   document.getElementById('pInvLines').value = ''; document.getElementById('pInvPay').value = '';
-  { const _s = document.getElementById('pInvSpecial'); if(_s) _s.value = ''; const _l = document.getElementById('pLineSpecial'); if(_l) _l.value = ''; const _c = document.getElementById('pInvSpecialIncl'); if(_c) _c.checked = false; }
+  { const _s = document.getElementById('pInvSpecial'); if(_s) _s.value = ''; const _l = document.getElementById('pLineSpecial'); if(_l) _l.value = ''; const _c = document.getElementById('pInvSpecialIncl'); if(_c) _c.checked = true; }
   _invAdjSummary(); purchaseRecalc('qty');
 }
 function _r4(x){ return Math.round(x*10000)/10000; }
@@ -334,7 +334,7 @@ function openPurchaseModal(id, back){
   document.getElementById('pDiscPct').dataset.auto = (!p && _lastDiscPct) ? '0' : '1';
   document.getElementById('pInvLines').value = p ? '' : _invLinesVal;
   document.getElementById('pInvPay').value = p ? '' : _invPayVal;
-  { const _s = document.getElementById('pInvSpecial'); if(_s) _s.value = p ? '' : _invSpecialVal; const _l = document.getElementById('pLineSpecial'); if(_l) _l.value = ''; const _c = document.getElementById('pInvSpecialIncl'); if(_c) _c.checked = p ? false : _invSpecialInclVal; }
+  { const _s = document.getElementById('pInvSpecial'); if(_s) _s.value = p ? '' : _invSpecialVal; const _l = document.getElementById('pLineSpecial'); if(_l) _l.value = ''; const _c = document.getElementById('pInvSpecialIncl'); if(_c) _c.checked = p ? true : _invSpecialInclVal; }
   _invAdjSummary();
   document.getElementById('pCalcHint').style.display = 'none';
   document.getElementById('pSell').value = '';
