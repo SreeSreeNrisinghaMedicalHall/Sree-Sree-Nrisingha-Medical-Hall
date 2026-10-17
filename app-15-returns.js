@@ -102,6 +102,7 @@ function returnSave(){
   // আগে ফোনে সাথে সাথে — ইন্টারনেট না থাকলেও হিসাব ঠিক থাকে
   if(restock) c.items.forEach(it=>{ const med = medicines.find(m=>m.id===it.id); if(med) med.stock += Math.abs(it.qty); });
   if(restock) save(DB_KEYS.med, medicines);
+  rec.serial = rcptNextNo();   // ফেরত রশিদও একই ক্রমে নম্বর পায়
   sales.push(rec); save(DB_KEYS.sale, sales);
   if(method==='due' && cust){ cust.due = (cust.due||0) + total; save(DB_KEYS.customer, customers); }
   if(cloudReady()){

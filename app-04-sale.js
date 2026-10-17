@@ -347,6 +347,66 @@ function togglePartialCash(){
   document.getElementById('partialCashWrap').style.display = isDue ? 'block' : 'none';
   if(isDue) document.getElementById('cashPaidNow').value = 0;
 }
+
+// ===== রশিদ নম্বর (সিরিয়াল) =====
+// নিয়ম: প্রতিটা বিক্রয়/ফেরত তৈরির মুহূর্তেই নিজের নম্বর পায় এবং রেকর্ডে (ফোন + ক্লাউড) চিরদিনের জন্য লেখা থাকে —
+// নম্বর কখনো গণনা করে বের করা হয় না, তাই মাঝের কোনো রশিদ মুছলে অন্য কোনো রশিদের নম্বর বদলায় না।
+// পরের নম্বর = এখন পর্যন্ত সবচেয়ে বড় নম্বর + ১ (ফোনে ইতিহাস-সীমা থাকলেও ssn_rcpt_hi নম্বর পিছিয়ে যেতে দেয় না)।
+const RCPT_HI_KEY = 'ssn_rcpt_hi';
+function rcptBn(n){ try{ return Number(n).toLocaleString('bn-BD',{useGrouping:false}); }catch(e){ return String(n); } }
+function rcptAllSales(){
+  const a = sales.slice();
+  try{ if(typeof _hxSales!=='undefined' && _hxSales.length){ const ids = new Set(a.map(x=>x.id)); _hxSales.forEach(x=>{ if(!ids.has(x.id)) a.push(x); }); } }catch(e){}
+  return a;
+}
+function rcptMaxSerial(){ let m = 0; rcptAllSales().forEach(x=>{ const n = parseInt(x.serial,10); if(n>m) m = n; }); return m; }
+function rcptNextNo(){
+  let hi = 0; try{ hi = parseInt(localStorage.getItem(RCPT_HI_KEY),10) || 0; }catch(e){}
+  const n = Math.max(hi, rcptMaxSerial()) + 1;
+  try{ localStorage.setItem(RCPT_HI_KEY, String(n)); }catch(e){}
+  return n;
+}
+// একদম শেষ রশিদটা মুছলে (ভুল হলে) সেই নম্বর পরের রশিদ আবার পাবে; মাঝের রশিদ মুছলে কিছুই বদলায় না
+function rcptAfterDelete(sale){
+  try{
+    let hi = parseInt(localStorage.getItem(RCPT_HI_KEY),10) || 0;
+    const n = parseInt(sale && sale.serial,10);
+    if(n && n===hi) localStorage.setItem(RCPT_HI_KEY, String(rcptMaxSerial()));
+  }catch(e){}
+}
+// তালিকার সারিতে দেখানোর ছোট চিহ্ন: #১২৩
+function rcptTag(s){ return (s && s.serial) ? '<b style="color:#1f5c46;">#'+rcptBn(s.serial)+'</b> ' : ''; }
+function rcptDupes(sale){
+  const n = parseInt(sale && sale.serial,10); if(!n) return [];
+  return rcptAllSales().filter(x=>parseInt(x.serial,10)===n && x.id!==sale.id);
+}
+function rcptShowList(list){
+  document.getElementById('detailModalTitle').textContent = 'রশিদ নং ' + rcptBn(list[0].serial) + ' — ' + list.length + 'টা পাওয়া গেছে';
+  document.getElementById('detailModalContent').innerHTML = list.map(s=>`
+    <div class="row-item" onclick="closeModal('detailModalBackdrop');showReceiptById('${s.id}')" style="cursor:pointer;">
+      <div><div class="row-title">${rcptTag(s)}${escapeHtml(s.customerName||'ওয়াক-ইন কাস্টমার')}</div><div class="row-sub">${escapeHtml(s.date||'')} • ${(s.items||[]).length} আইটেম${s.isReturn?' • ↩ ফেরত':''}</div></div>
+      <div class="row-right"><div class="row-title">${fmt(Math.abs(s.total||0))}</div></div>
+    </div>`).join('');
+  openModal('detailModalBackdrop');
+}
+async function rcptSearchGo(){
+  const el = document.getElementById('rcptSearchNo'); if(!el) return;
+  const raw = (el.value||'').trim().replace(/^#/,'').replace(/[০-৯]/g, d=>'০১২৩৪৫৬৭৮৯'.indexOf(d));
+  const n = parseInt(raw,10);
+  if(!n || n<1){ toast('রশিদ নম্বর লিখুন (যেমন: ১২৩)'); return; }
+  let hits = rcptAllSales().filter(x=>parseInt(x.serial,10)===n);
+  if(!hits.length && cloudReady()){
+    toast('ক্লাউডে খোঁজা হচ্ছে...');
+    try{
+      const snap = await shopColl('sales').where('serial','==',n).get();
+      hits = snap.docs.map(d=> (typeof deltaRec==='function') ? deltaRec(d) : Object.assign({id:d.id}, d.data()));
+    }catch(e){ console.error(e); }
+  }
+  if(!hits.length){ toast('রশিদ নং '+rcptBn(n)+' পাওয়া যায়নি (নম্বর নেই / মুছে ফেলা / নম্বর বসার আগের পুরনো রশিদ)'); return; }
+  el.value = '';
+  hits.sort((a,b)=>(a.ts||0)-(b.ts||0));
+  if(hits.length===1) showReceipt(hits[0]); else rcptShowList(hits);
+}
 function completeSale(){
   if(!cart.length){ toast('কার্ট খালি'); return; }
   // কাস্টমার ঘরে নাম লেখা আছে কিন্তু বাছা (সিলেক্ট) হয়নি — চুপচাপ ওয়াক-ইন বিক্রি না করে নিজে মিলিয়ে নেয়, না মিললে থামিয়ে জানায়
@@ -423,6 +483,7 @@ function completeSaleInner(){
     payMethod, cashPaidNow, dueAdded, doctorName, doctorTitle, doctorType, diagnosis:diagnosis||null, customerId:custId||null, customerName:cust?cust.name:null,
     patientName:patientName||null, patientMobile:patientMobile||null, rxId:_pendingSaleRxId||null };
   Object.assign(saleRecord, sellerFields());   // এই ফোনের বিক্রেতার নাম (থাকলে) — কে বিক্রি করেছে
+  saleRecord.serial = rcptNextNo();   // রশিদ নম্বর — একবার বসলে আর কখনো বদলায় না
   { const _age = (document.getElementById('patientAge')?.value||'').trim(); const _au = document.getElementById('patientAgeUnit')?.value||''; if(_age) saleRecord.patientAge = _age + ((_au && /^[0-9০-৯.]+$/.test(_age)) ? ' '+_au : ''); }   // রোগীর বয়স (ঐচ্ছিক)
   if(cashPaidNow>0 && payChannel!=='cash') saleRecord.payChannel = payChannel;   // বিকাশ/নগদ/রকেট/কার্ড — ক্যাশ বাক্সের হিসাবে ধরা হয় না
 
@@ -491,7 +552,7 @@ function showTodayProfit(){
     const profit = s.total - cost;
     totalProfit += profit;
     return `<div class="row-item" onclick="showReceiptById('${s.id}')" style="cursor:pointer;">
-      <div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">বিক্রয়: ${fmt(s.total)} • ${s.items.length} আইটেম</div></div>
+      <div><div class="row-title">${rcptTag(s)}${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">বিক্রয়: ${fmt(s.total)} • ${s.items.length} আইটেম</div></div>
       <div class="row-right"><div class="row-title">${fmt(profit)}</div><div class="row-sub">লাভ</div></div>
     </div>`;
   }).join('');
@@ -515,7 +576,7 @@ function showTodaySales(){
   const todayLabTests = labTests.filter(lt=>lt.date===t && labTestTotals(lt).price>0).sort((a,b)=>b.ts-a.ts);
   const rows = todaySales.map(s=>`
     <div class="row-item" onclick="showReceiptById('${s.id}')" style="cursor:pointer;">
-      <div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.items.length} আইটেম • ${new Date(s.ts).toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'})}</div></div>
+      <div><div class="row-title">${rcptTag(s)}${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.items.length} আইটেম • ${new Date(s.ts).toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'})}</div></div>
       <div class="row-right"><div class="row-title">${fmt(s.total)}</div><div class="row-sub">${salePayLabel(s)}</div></div>
     </div>`).join('');
   const testRows = todayLabTests.map(lt=>{
@@ -635,6 +696,7 @@ async function deleteSaleRecord(id){
     // in localStorage, undoing the delete in the same call. This was the actual reason deletes
     // looked like they weren't working (found: 2026-09-27).
     sales = sales.filter(s=>s.id!==id);
+    rcptAfterDelete(sale);
     save(DB_KEYS.sale, sales);
     if(cloudReady()){
       if(!_noStock) sale.items.forEach(it=>{ shopColl('medicines').doc(it.id).update({stock: firebase.firestore.FieldValue.increment(it.qty)}).catch(e=>console.error(e)); });
@@ -670,6 +732,8 @@ function showReceipt(sale, keepSplit){
         <div class="r-sub" style="color:#000;"><b style="font-size:1.2em;font-weight:800;letter-spacing:0.3px;">মোবাইল: ০১৭৩৯০৯৭৩৯০</b></div>
         <div class="r-sub" style="color:#000;">সোনাখালী, আমতলী, বরগুনা।</div>
       </div>
+      ${sale.serial ? `<div style="text-align:center;font-size:1.7em;font-weight:900;color:#000;border:3px solid #000;border-radius:6px;padding:3px 0;margin:2px 0 8px;letter-spacing:0.5px;">রশিদ নং: ${rcptBn(sale.serial)}</div>` : ''}
+      ${rcptDupes(sale).length ? `<div class="no-print" style="background:#fdecea;color:#b42318;font-weight:700;border-radius:8px;padding:6px 8px;margin:0 0 8px;font-size:13px;">⚠️ এই নম্বরে আরও ${rcptDupes(sale).length}টা রশিদ আছে (দুই ফোনে একই সময়ে বিক্রি হয়েছিল) — রশিদ নং ${rcptBn(sale.serial)} লিখে খুঁজে দেখুন</div>` : ''}
       ${sale.isReturn ? '<div style="text-align:center;font-weight:800;font-size:1.15em;margin:2px 0 6px;border:2px solid #000;padding:2px;">↩ ফেরত রসিদ</div>' : ''}
       <div class="r-meta">
         <span>তারিখ: ${dateStr}</span>
@@ -731,7 +795,7 @@ function _receiptDueParts(cust){
   }catch(e){ return []; }
 }
 function buildReceiptText(sale, dateStr, cust){
-  let t = `শ্রী শ্রী নৃসিংহ মেডিকেল হল\n${sale.isReturn?'** ফেরত রসিদ **\n':''}তারিখ: ${dateStr}\nকাস্টমার: ${sale.customerName||'ওয়াক-ইন'}\n`;
+  let t = `শ্রী শ্রী নৃসিংহ মেডিকেল হল\n${sale.serial?'রশিদ নং: '+rcptBn(sale.serial)+'\n':''}${sale.isReturn?'** ফেরত রসিদ **\n':''}তারিখ: ${dateStr}\nকাস্টমার: ${sale.customerName||'ওয়াক-ইন'}\n`;
   if(cust && cust.mobile) t += `মোবাইল: ${cust.mobile}\n`;
   if(cust && (cust.age||cust.ageMonths)) t += `বয়স: ${formatAge(cust)}\n`;
   if(sale.doctorName) t += formatPrescriberLine(sale) + `\n`;

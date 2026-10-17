@@ -179,7 +179,7 @@ function rowToHtml(r){
   return `
     <div class="row-item" onclick="closeModal('detailModalBackdrop');showReceiptById('${r.sale.id}')" style="cursor:pointer;">
       <div>
-        <div class="row-title">${r.item.name} <span class="tag-en">× ${r.item.qty}</span></div>
+        <div class="row-title">${rcptTag(r.sale)}${r.item.name} <span class="tag-en">× ${r.item.qty}</span></div>
         <div class="row-sub">রোগী: ${r.sale.patientName||r.sale.customerName||'—'} • মোবাইল: ${r.sale.patientMobile||'—'}${r.sale.patientAge?' • বয়স: '+r.sale.patientAge:''}</div>
         <div class="row-sub">${r.sale.doctorName ? formatPrescriberLine(r.sale) : 'প্রেসক্রাইবার: —'}</div>
         ${r.sale.rxPhoto?'<div class="row-sub">📷 প্রেসক্রিপশনের ছবি আছে (রসিদ খুলে দেখুন)</div>':''}
@@ -331,7 +331,7 @@ function showReportProfit(){
     const profit = s.total - cost;
     totalProfit += profit;
     return `<div class="row-item" onclick="closeModal('detailModalBackdrop');showReceiptById('${s.id}')" style="cursor:pointer;">
-      <div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">বিক্রয়: ${fmt(s.total)} • ${s.date}</div></div>
+      <div><div class="row-title">${rcptTag(s)}${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">বিক্রয়: ${fmt(s.total)} • ${s.date}</div></div>
       <div class="row-right"><div class="row-title">${fmt(profit)}</div><div class="row-sub">লাভ</div></div>
     </div>`;
   }).join('');
@@ -354,7 +354,7 @@ function showReportDue(){
   const sInRange = repSales().filter(s=>inRange(s.date, range) && (s.dueAdded||0)>0).sort((a,b)=>b.ts-a.ts);
   const rows = sInRange.map(s=>`
     <div class="row-item" onclick="closeModal('detailModalBackdrop');showReceiptById('${s.id}')" style="cursor:pointer;">
-      <div><div class="row-title">${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.date}</div></div>
+      <div><div class="row-title">${rcptTag(s)}${s.customerName||'ওয়াক-ইন কাস্টমার'}</div><div class="row-sub">${s.date}</div></div>
       <div class="row-right"><div class="row-title">${fmt(s.dueAdded)}</div><div class="row-sub">বাকি</div></div>
     </div>`).join('');
   document.getElementById('detailModalTitle').textContent = 'নতুন বাকি (' + sInRange.length + 'টা)';

@@ -103,6 +103,11 @@
         <div id="posSearchResults"></div>
       </div>
 
+      <div class="card" style="padding:10px 12px;">
+        <label style="margin-top:0;">🔎 রশিদ নম্বর দিয়ে খুঁজুন</label>
+        <div style="display:flex;gap:8px;"><input type="text" id="rcptSearchNo" inputmode="numeric" placeholder="যেমন: ১২৩" onkeydown="if(event.key==='Enter'){rcptSearchGo();}" style="flex:1;min-width:0;" autocomplete="off"><button type="button" class="btn btn-outline" onclick="rcptSearchGo()">খুঁজুন</button></div>
+      </div>
+
       <h3 class="section-h"><span class="dot"></span>কার্ট <span class="tag-en">Cart</span> <button type="button" class="btn btn-sm btn-outline" style="float:right;margin-top:-4px;" onclick="showLastReceipt()">🧾 শেষ রসিদ</button></h3>
       <div class="card" id="cartList">
         <div class="empty-state">কার্ট খালি — ওপরে থেকে ওষুধ যোগ করুন</div>

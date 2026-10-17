@@ -1123,7 +1123,7 @@ function showLedger(custId){
   { const seen = new Set(); _ledgerNames = [];
     [c.name, ...(_hf ? histBaseNames(custId).map(a=>a[0]) : []), ...custSales.map(s=>s.patientName), ...custPayments.map(p=>p.forName)].forEach(n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); _ledgerNames.push(n); } }); }
   const events = [
-    ...custSales.map(s=>({ts:s.ts, type:'sale', id:s.id, items:s.items, total:s.total, cash:s.cashPaidNow??s.total, due:s.dueAdded??0, rxId:s.rxId||null, patientName:s.patientName||null, isReturn:!!s.isReturn})),
+    ...custSales.map(s=>({ts:s.ts, type:'sale', id:s.id, serial:s.serial||null, items:s.items, total:s.total, cash:s.cashPaidNow??s.total, due:s.dueAdded??0, rxId:s.rxId||null, patientName:s.patientName||null, isReturn:!!s.isReturn})),
     ...custPayments.map(p=>({ts:p.ts, type:(p.type==='due_adjustment'?'adjust':'payment'), amount:p.amount, forName:p.forName||null, forOwn:!!p.forOwn, id:p.id||null}))
   ].sort((a,b)=>a.ts-b.ts);
   const _openBal = _hf ? histBaseCust(custId) : 0;
@@ -1152,7 +1152,7 @@ function showLedger(custId){
           <button class="btn btn-sm" style="color:var(--danger,#c0392b);background:none;border:1px solid var(--danger,#c0392b);border-radius:6px;padding:3px 8px;font-size:11px;" onclick="deleteSaleRecord('${e.id}')">${e.isReturn ? '🗑 ভুল ফেরত মুছুন' : '🗑 ভুল/ডুপ্লিকেট বিক্রয় মুছুন'}</button>
         </div>` : '';
       return `<div class="card receipt" style="margin-top:0;padding:12px;cursor:pointer;" onclick="showReceiptById('${e.id}')">
-        <div class="r-meta" style="margin:0 0 4px;"><span>${dt}${e.isReturn?' • ↩ ফেরত':''}</span><span class="badge badge-gold">${running<0?'অগ্রিম এখন: '+fmt(-running):'বাকি এখন: '+fmt(running)}</span></div>
+        <div class="r-meta" style="margin:0 0 4px;"><span>${e.serial?'<b style="color:#1f5c46;font-size:1.1em;">রশিদ #'+rcptBn(e.serial)+'</b> • ':''}${dt}${e.isReturn?' • ↩ ফেরত':''}</span><span class="badge badge-gold">${running<0?'অগ্রিম এখন: '+fmt(-running):'বাকি এখন: '+fmt(running)}</span></div>
         ${(e.patientName && e.patientName.trim() && e.patientName.trim()!==(c.name||'').trim()) ? `<div class="row-sub" style="margin:-2px 0 6px;">রোগী: <b>${escapeHtml(e.patientName)}</b></div>` : ''}
         <table style="margin-top:4px;">
           <thead><tr><th>ওষুধ</th><th class="num">পরিমাণ</th><th class="num">মূল্য</th></tr></thead>
