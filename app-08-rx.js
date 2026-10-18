@@ -896,7 +896,31 @@ function _custNamesList(c){
   add(c.name);
   sales.forEach(s=>{ if(s.customerId===c.id) add(s.patientName); });
   payments.forEach(p=>{ if(p.customerId===c.id) add(p.forName); });
+  const _hs = _hiddenSettledSet(c);   // মালিক তালিকা থেকে সরিয়েছেন + এখন কোনো বাকি নেই — বাছার তালিকায় আর আসবে না
+  return out.filter((n,i)=> i===0 || !_hs.has(n.toLowerCase()));
+}
+// ===== নাম সরানো (ডিলিট): শোধ হয়ে যাওয়া নাম "কার নামে" তালিকা থেকে সরানো =====
+// শুধু বাছার তালিকা থেকে লুকায় — আগের বিক্রয়/জমার ইতিহাস ও মোট বাকি একটুও বদলায় না। সেই নামে আবার বাকি হলে নিজে থেকেই ফিরে আসে।
+function _hiddenSettledSet(c){
+  const out = new Set(); const hid = (c && c.hiddenNames) || [];
+  if(!hid.length) return out;
+  const rem = {}; ((_buildPeopleIndex()[c.id])||[]).forEach(p=>{ rem[p.name.trim().toLowerCase()] = p.taken-p.paid; });
+  hid.forEach(k=>{ if(Math.abs(rem[k]||0) <= 0.5) out.add(k); });
   return out;
+}
+function _unhideName(c, name){
+  try{
+    const k = (name||'').trim().toLowerCase(); if(!k || !c.hiddenNames || !c.hiddenNames.includes(k)) return;
+    c.hiddenNames = c.hiddenNames.filter(x=>x!==k);
+    if(cloudReady()) shopColl('customers').doc(c.id).set({hiddenNames:c.hiddenNames},{merge:true}).catch(e=>console.error(e));
+  }catch(e){}
+}
+// কোনো নামের (name=null হলে কাস্টমারের নিজের) ভাগে এখন কত বাকি; ভাগ করার মতো একাধিক নাম না থাকলে null
+function _nameRemaining(cid, name){
+  const c = customers.find(x=>x.id===cid); if(!c) return null;
+  const list = _buildPeopleIndex()[cid] || [];
+  if(name){ const k = name.trim().toLowerCase(); const e = list.find(p=>p.name.trim().toLowerCase()===k); return e ? Math.round((e.taken-e.paid)*100)/100 : 0; }
+  const sp = _dueSplit(list, c); return sp.others.length ? Math.max(0, sp.own) : null;
 }
 function _setupForPicker(pfx, c, preName){
   const wrap = document.getElementById(pfx+'ForWrap'), sel = document.getElementById(pfx+'ForSel');
@@ -931,6 +955,7 @@ function _forSelChange(pfx){
   const isNew = sel.value==='__new__';
   nw.style.display = isNew ? '' : 'none';
   if(isNew) nw.focus();
+  if(pfx==='pay') _payFullLabel();
 }
 // ফেরত: {ok, forName, forOwn} — ok:false হলে সেভ থামাতে হবে (টোস্ট দেখানো হয়ে গেছে)
 function _readForPicker(pfx, c){
@@ -961,6 +986,7 @@ function saveAdjustDue(){
   const amount = parseFloat(document.getElementById('adjustAmount').value)||0;
   if(amount<=0){ toast('সঠিক পরিমাণ দিন'); return; }
   const _fpA = _readForPicker('adj', c); if(!_fpA.ok) return;
+  if(_fpA.forName) _unhideName(c, _fpA.forName);
   c.due = (c.due||0) + amount;
   save(DB_KEYS.customer, customers);
   // Record a permanent ledger entry (type:'due_adjustment') so this manual বাকি shows up in the
@@ -988,6 +1014,7 @@ function openPaymentModal(id, forName){
   const c = customers.find(x=>x.id===id);
   document.getElementById('paymentCustName').textContent = c.name;
   _setupForPicker('pay', c, _payForName);
+  _payFullLabel();
   document.getElementById('paymentCurrentDue').textContent = dueText(c.due);
   document.getElementById('paymentAmount').value = '';
   openModal('paymentModalBackdrop');
@@ -998,7 +1025,16 @@ function savePayment(){
   const amount = parseFloat(document.getElementById('paymentAmount').value)||0;
   if(amount<=0){ toast('সঠিক পরিমাণ দিন'); return; }
   const _fpP = _readForPicker('pay', c); if(!_fpP.ok) return;
-  reconcileOne(c.id); // জমা নেওয়ার ঠিক আগে ইতিহাস থেকে সঠিক বাকি বসিয়ে নিই
+  reconcileOne(c.id);
+  { // একাধিক নামের কাস্টমারে: বাছা নামের নিজের বাকির চেয়ে বেশি নিলে জিজ্ঞেস করে
+    const _wrapP = document.getElementById('payForWrap');
+    if(_wrapP && _wrapP.style.display!=='none'){
+      const _nmP = _fpP.forName || null, _rP = _nameRemaining(c.id, _nmP);
+      const _known = !_nmP || ((_buildPeopleIndex()[c.id]||[]).some(p=>p.name.trim().toLowerCase()===_nmP.trim().toLowerCase()));
+      if(_rP!==null && _known && (amount-Math.max(_rP,0))>=1 && !confirm('"'+(_nmP||c.name||'নিজে')+'"-এর নামে বাকি আছে '+fmt(Math.max(_rP,0))+', আপনি '+fmt(amount)+' জমা নিচ্ছেন।\n\nবেশি '+fmt(amount-Math.max(_rP,0))+' এই নামের হিসাবে অতিরিক্ত জমা দেখাবে। এগোবেন?\n\n(শুধু ওই নামের বাকিটুকু নিতে চাইলে Cancel চেপে "সম্পূর্ণ বাকি শোধ" বোতাম চাপুন)')) return;
+    }
+  }
+  if(_fpP.forName) _unhideName(c, _fpP.forName); // জমা নেওয়ার ঠিক আগে ইতিহাস থেকে সঠিক বাকি বসিয়ে নিই
   if((c.due||0)<=0){
     if(!confirm('এই কাস্টমারের এখন কোনো বাকি নেই'+((c.due||0)<0?' (আগে থেকেই '+fmt(-c.due)+' অগ্রিম জমা আছে)':'')+'।\n\n'+fmt(amount)+' অগ্রিম হিসেবে জমা রাখবেন?')) return;
   } else if(amount>(c.due||0) && (amount-(c.due||0))>=1 && !confirm('বাকি আছে '+fmt(c.due)+', আপনি '+fmt(amount)+' জমা নিচ্ছেন।\n\nবাকি শোধ হয়ে অতিরিক্ত '+fmt(amount-c.due)+' অগ্রিম জমা থাকবে। এগোবেন?')) return;
@@ -1049,7 +1085,8 @@ function _ledgerBreakdownHtml(c, custSales, custPayments){
     if(p.type==='due_adjustment'){ if(_nm) slot(_nm).taken += p.amount; else looseAdd += p.amount; }
     else { if(_nm) slot(_nm).paid += p.amount; else loosePaid += p.amount; }
   });
-  const people = [...map.values()].filter(p=>p.isOwn || p.taken>0 || p.paid>0)
+  const _hsB = _hiddenSettledSet(c);
+  const people = [...map.values()].filter(p=>p.isOwn || ((p.taken>0 || p.paid>0) && !_hsB.has(p.name.trim().toLowerCase())))
     .sort((a,b)=> (b.isOwn?1:0)-(a.isOwn?1:0) || (b.taken-b.paid)-(a.taken-a.paid));
   _lbPeople = people;
   const rows = people.map((p,i)=>{
@@ -1063,6 +1100,7 @@ function _ledgerBreakdownHtml(c, custSales, custPayments){
       <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="btn btn-sm btn-outline" style="flex:1;" onclick="_lbPay(${i})">টাকা জমা নিন</button>
         <button class="btn btn-sm btn-outline" style="flex:1;" onclick="_lbAdd(${i})">বাকি যোগ করুন</button>
+        ${(!p.isOwn && Math.abs(rem)<=0.5 && currentRole()==='owner') ? `<button class="btn btn-sm" style="flex:0 0 auto;color:var(--danger,#c0392b);background:none;border:1px solid var(--danger,#c0392b);" onclick="_lbHideName(${i})">🗑 নাম সরান</button>` : ''}
       </div></div>`;
   }).join('');
   looseList.sort((x,y)=>y.ts-x.ts);
@@ -1115,6 +1153,19 @@ function _lbReassign(pid, name){
   if(_currentLedgerCustId) showLedger(_currentLedgerCustId);
   try{ renderCustomers(); }catch(e){}
 }
+function _lbHideName(i){
+  if(!requireOwnerRole('নাম সরানো')) return;
+  const p = _lbPeople[i], c = customers.find(x=>x.id===_currentLedgerCustId);
+  if(!p || !c || p.isOwn) return;
+  const rem = p.taken - p.paid;
+  if(Math.abs(rem) > 0.5){ toast(rem>0 ? '"'+p.name+'"-এর নামে এখনো '+fmt(rem)+' বাকি আছে — আগে শোধ করুন, তারপর সরান' : '"'+p.name+'"-এর নামে '+fmt(-rem)+' অগ্রিম জমা আছে — তাই সরানো যাচ্ছে না'); return; }
+  if(!confirm('আপনি কি "'+p.name+'" নামটা ডিলিট করতে চান?\n\n(এই নামের আগের কোনো বিক্রয়/জমার ইতিহাস মুছবে না, মোট বাকিও বদলাবে না — শুধু "কার নামে" বাছার তালিকা থেকে নামটা সরে যাবে। পরে এই নামে আবার বাকি হলে নিজে থেকেই ফিরে আসবে।)')) return;
+  c.hiddenNames = Array.from(new Set([...(c.hiddenNames||[]), p.name.trim().toLowerCase()]));
+  save(DB_KEYS.customer, customers);
+  try{ if(cloudReady()) shopColl('customers').doc(c.id).set({hiddenNames:c.hiddenNames},{merge:true}).catch(e=>console.error(e)); }catch(e){}
+  toast('"'+p.name+'" নামটা তালিকা থেকে সরানো হয়েছে ✓');
+  showLedger(c.id); try{ renderCustomers(); }catch(e){}
+}
 function _lbPay(i){ const p=_lbPeople[i]; if(p && _currentLedgerCustId) openPaymentModal(_currentLedgerCustId, p.name); }
 function _lbAdd(i){ const p=_lbPeople[i]; if(p && _currentLedgerCustId) openAdjustDueModal(_currentLedgerCustId, p.name); }
 function showLedger(custId){
@@ -1125,7 +1176,8 @@ function showLedger(custId){
   const custSales = sales.filter(s=>s.customerId===custId && (!_hf || (s.ts||0)>=_hf));
   const custPayments = payments.filter(p=>p.customerId===custId && (!_hf || (p.ts||0)>=_hf));
   { const seen = new Set(); _ledgerNames = [];
-    [c.name, ...(_hf ? histBaseNames(custId).map(a=>a[0]) : []), ...custSales.map(s=>s.patientName), ...custPayments.map(p=>p.forName)].forEach(n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); _ledgerNames.push(n); } }); }
+    [c.name, ...(_hf ? histBaseNames(custId).map(a=>a[0]) : []), ...custSales.map(s=>s.patientName), ...custPayments.map(p=>p.forName)].forEach(n=>{ n=(n||'').trim(); const k=n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); _ledgerNames.push(n); } });
+    { const _hs = _hiddenSettledSet(c); _ledgerNames = _ledgerNames.filter((n,i)=> i===0 || !_hs.has(n.toLowerCase())); } }
   const events = [
     ...custSales.map(s=>({ts:s.ts, type:'sale', id:s.id, serial:s.serial||null, items:s.items, total:s.total, cash:s.cashPaidNow??s.total, due:s.dueAdded??0, rxId:s.rxId||null, patientName:s.patientName||null, isReturn:!!s.isReturn})),
     ...custPayments.map(p=>({ts:p.ts, type:(p.type==='due_adjustment'?'adjust':'payment'), amount:p.amount, forName:p.forName||null, forOwn:!!p.forOwn, id:p.id||null}))
@@ -1310,10 +1362,24 @@ function scheduleDueReconcile(collName){
   _dueReconTimer = setTimeout(reconcileAllDues, 2500);
 }
 window.addEventListener('load', ()=>setTimeout(()=>{ try{ if(!cloudReady()) reconcileAllDues(); }catch(e){} }, 3000));
+// "সম্পূর্ণ বাকি শোধ" — একাধিক নাম থাকলে যে নামটা বাছা আছে শুধু তার নিজের বাকিটুকু বসায় (পুরো কাস্টমারের মোট নয়)
+function _payFullTarget(){
+  const c = customers.find(x=>x.id===payingCustomerId); if(!c) return {ok:false};
+  const wrap = document.getElementById('payForWrap'), sel = document.getElementById('payForSel');
+  if(!wrap || !sel || wrap.style.display==='none') return {ok:true, multi:false, rem:(c.due||0), label:'সম্পূর্ণ বাকি একসাথে শোধ'};
+  const v = sel.value; if(!v) return {ok:false, multi:true};
+  if(v==='__new__'){ const nn = (document.getElementById('payForNew').value||'').trim(); const r = nn ? _nameRemaining(c.id, nn) : 0; return {ok:true, multi:true, rem:r||0, label:'সম্পূর্ণ বাকি একসাথে শোধ'}; }
+  if(v==='__own__'){ const r = _nameRemaining(c.id, null); const rr = (r===null) ? (c.due||0) : r; return {ok:true, multi:true, rem:rr, label:(c.name||'নিজের')+'-এর সম্পূর্ণ বাকি '+fmt(rr)+' শোধ'}; }
+  const r = _nameRemaining(c.id, v) || 0; return {ok:true, multi:true, rem:r, label:v+'-এর সম্পূর্ণ বাকি '+fmt(Math.max(0,r))+' শোধ'};
+}
+function _payFullLabel(){ try{ const b = document.getElementById('payFullBtn'); if(!b) return; const t = _payFullTarget(); b.textContent = t.ok ? t.label : 'সম্পূর্ণ বাকি একসাথে শোধ'; }catch(e){} }
 function clearFullDue(){
   const c = customers.find(x=>x.id===payingCustomerId);
   if(!c) return;
-  document.getElementById('paymentAmount').value = c.due;
+  const t = _payFullTarget();
+  if(!t.ok){ toast('আগে বেছে নিন — কার নামে?'); return; }
+  if(t.multi && t.rem<=0.5){ toast('এই নামে এখন কোনো বাকি নেই'); return; }
+  document.getElementById('paymentAmount').value = t.multi ? (Math.round(t.rem*100)/100) : c.due;
 }
 let editingSupplierId = null;
 // ===== সাপ্লায়ারের প্রতিনিধির (কন্টাক্ট ব্যক্তির) ছবি =====

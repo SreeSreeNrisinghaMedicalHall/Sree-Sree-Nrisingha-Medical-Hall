@@ -926,7 +926,7 @@ Fexo 120mg
     <input type="number" id="paymentAmount" min="0" placeholder="৳">
     <label style="margin-top:8px;">টাকা কীভাবে পেলেন</label>
     <select id="paymentChannel"><option value="cash">নগদ (হাতে)</option><option value="bkash">বিকাশ</option><option value="nagad">নগদ (Nagad অ্যাপ)</option><option value="rocket">রকেট</option><option value="bank">কার্ড / ব্যাংক</option></select>
-    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="clearFullDue()">সম্পূর্ণ বাকি একসাথে শোধ</button>
+    <button id="payFullBtn" class="btn btn-outline btn-block" style="margin-top:8px;" onclick="clearFullDue()">সম্পূর্ণ বাকি একসাথে শোধ</button>
     <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="savePayment()">জমা নিশ্চিত করুন</button>
   </div>
 </div>
