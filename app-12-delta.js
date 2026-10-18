@@ -104,15 +104,75 @@ function _deltaNeedsFull(name, localCount){
 function deltaCountReads(n){
   try{
     if(!n) return;
-    const day = new Date().toISOString().slice(0,10);
+    const day = quotaDay();
     let o = null; try{ o = JSON.parse(localStorage.getItem('ssn_dl_reads')); }catch(e){}
     if(!o || o.d!==day) o = {d:day, n:0};
     o.n += n; localStorage.setItem('ssn_dl_reads', JSON.stringify(o));
     _reportReadsSoon();
   }catch(e){}
 }
-// v29: প্রতিটা ফোন (কর্মচারীরটাও) নিজের আজকের পড়ার সংখ্যা নিজের ডিভাইস-ডকুমেন্টে লেখে (রুলস বদলানো লাগে না — devices/{token} সবাই লিখতে পারে);
-// মালিক সেটিংসে সব ফোনের যোগফল দেখেন। ৫ মিনিটে সর্বোচ্চ একবার লেখে, যাতে লেখার খরচ না বাড়ে।
+// ===== ক্লাউডের দৈনিক সীমা (পড়া + লেখা) — আনুমানিক হিসাব =====
+// ফায়ারবেসের দৈনিক সীমা আমেরিকার (Pacific) মধ্যরাতে নতুন করে শুরু হয় — তাই দিনের হিসাবও সেই সময়ে ভাগ করা (বাংলাদেশে দুপুর ১টা/২টা)।
+// ফ্রি (Spark) প্ল্যানে সীমা: দিনে ৫০,০০০ পড়া ও ২০,০০০ লেখা। এই অ্যাপ থেকে যা যা পড়া/লেখা হয় সেটাই গোনা হয় (আসল হিসাব ফায়ারবেস কনসোলের Usage ট্যাবে)।
+const QUOTA = { reads: 50000, writes: 20000 };
+function quotaDay(){ try{ return new Date().toLocaleDateString('en-CA', {timeZone:'America/Los_Angeles'}); }catch(e){ return new Date().toISOString().slice(0,10); } }
+function quotaResetText(){
+  let z = 'PDT';
+  try{ z = new Intl.DateTimeFormat('en-US', {timeZone:'America/Los_Angeles', timeZoneName:'short'}).formatToParts(new Date()).find(p=>p.type==='timeZoneName').value; }catch(e){}
+  return z==='PST' ? 'দুপুর ২টায়' : 'দুপুর ১টায়';
+}
+// ক্লাউড প্ল্যান: 'free' (ফ্রি — সীমা শেষ হলে ক্লাউড আটকায়) বা 'paid' (পেইড/Blaze — ফ্রি অংশ শেষ হলে টাকা কাটা শুরু)। মালিক সেটিংস থেকে বদলান।
+function quotaPlan(){ try{ return localStorage.getItem('ssn_quota_plan')==='paid' ? 'paid' : 'free'; }catch(e){ return 'free'; } }
+function toggleQuotaPlan(){
+  const toPaid = quotaPlan()!=='paid';
+  if(!confirm(toPaid
+    ? 'আপনি কি Firebase-এর পেইড প্ল্যানে (Blaze) গিয়েছেন?\n\nতাহলে "ফ্রি অংশ শেষ — এখন টাকা কাটছে" ধরনের সতর্কতা আসবে (ক্লাউড বন্ধ হওয়ার কথা বলবে না)। সীমার সংখ্যা (৫০,০০০ পড়া / ২০,০০০ লেখা) একই থাকবে — ওটা পেইড প্ল্যানেও দৈনিক ফ্রি অংশ।'
+    : 'ফ্রি প্ল্যানের সতর্কতায় ফিরবেন?\n\nসীমা শেষ হলে "ক্লাউডে যাওয়া আটকে থাকতে পারে" বলবে।')) return;
+  try{ localStorage.setItem('ssn_quota_plan', toPaid ? 'paid' : 'free'); }catch(e){}
+  try{ _usageCache = {at:0, data:null}; }catch(e){}
+  updateDeltaSyncUi(); try{ quotaBannerUpdate(true); }catch(e){}
+  toast(toPaid ? 'পেইড প্ল্যানের সতর্কতা চালু ✓' : 'ফ্রি প্ল্যানের সতর্কতা চালু ✓');
+}
+const _qn = n=>{ try{ return Number(n||0).toLocaleString('bn-BD'); }catch(e){ return String(n||0); } };
+function _usageLocal(key){ try{ const o = JSON.parse(localStorage.getItem(key)); return (o && o.d===quotaDay()) ? (o.n||0) : 0; }catch(e){ return 0; } }
+function deltaCountWrites(n, skipReport){
+  try{
+    if(!n) return;
+    const day = quotaDay();
+    let o = null; try{ o = JSON.parse(localStorage.getItem('ssn_dl_writes')); }catch(e){}
+    if(!o || o.d!==day) o = {d:day, n:0};
+    o.n += n; localStorage.setItem('ssn_dl_writes', JSON.stringify(o));
+    if(!skipReport) _reportReadsSoon();
+  }catch(e){}
+}
+// প্রতিটা Firestore ডকুমেন্ট লেখা/বদল/মোছা এখানে গোনা হয় (ব্যাচের লেখা app-10-এর ব্যাচ-র‍্যাপারে গোনা হয়)
+function _installWriteCounter(){
+  try{
+    const DR = firebase.firestore.DocumentReference; if(!DR || DR.prototype.__wc) return;
+    ['set','update','delete'].forEach(k=>{
+      const orig = DR.prototype[k]; if(typeof orig!=='function') return;
+      DR.prototype[k] = function(...a){ try{ deltaCountWrites(1, /\/devices\//.test(this.path||'')); }catch(e){} return orig.apply(this, a); };
+    });
+    DR.prototype.__wc = true;
+  }catch(e){}
+  // পড়াও SDK স্তরে গোনা — যেকোনো জায়গার .get() (ছবি, ডিভাইস তালিকা, বাকি মেলানো, ব্যাকআপ...) এখন ধরা পড়ে; ক্যাশ থেকে এলে গোনা হয় না, খালি ফলাফলেও কমপক্ষে ১
+  try{
+    const Q = firebase.firestore.Query;
+    if(Q && !Q.prototype.__rc){
+      const og = Q.prototype.get;
+      Q.prototype.get = function(...a){ return og.apply(this, a).then(snap=>{ try{ if(!(snap.metadata && snap.metadata.fromCache)) deltaCountReads(Math.max(1, snap.size||0)); }catch(e){} return snap; }); };
+      Q.prototype.__rc = true;
+    }
+    const D = firebase.firestore.DocumentReference;
+    if(D && !D.prototype.__rc){
+      const od = D.prototype.get;
+      D.prototype.get = function(...a){ return od.apply(this, a).then(snap=>{ try{ if(!(snap.metadata && snap.metadata.fromCache)) deltaCountReads(1); }catch(e){} return snap; }); };
+      D.prototype.__rc = true;
+    }
+  }catch(e){}
+}
+// প্রতিটা ফোন (কর্মচারীরটাও) নিজের আজকের পড়া-লেখার সংখ্যা নিজের ডিভাইস-ডকুমেন্টে লেখে (রুলস বদলানো লাগে না — devices/{token} সবাই লিখতে পারে);
+// মালিক সব ফোনের যোগফল দেখেন। ৫ মিনিটে সর্বোচ্চ একবার লেখে, যাতে লেখার খরচ না বাড়ে।
 let _rdTimer = null, _rdLast = 0;
 function _reportReadsSoon(){
   try{
@@ -126,30 +186,90 @@ async function _reportReads(){
   try{
     const shop = localStorage.getItem('ssn_shop_code'), token = localStorage.getItem('ssn_device_token');
     if(!shop || !token || typeof cloudDb==='undefined' || !cloudDb) return;
-    const o = JSON.parse(localStorage.getItem('ssn_dl_reads')); if(!o) return;
+    const day = quotaDay();
+    const payload = { readsAt: Date.now(), reads:{d:day, n:_usageLocal('ssn_dl_reads')}, writes:{d:day, n:_usageLocal('ssn_dl_writes')} };
     _rdLast = Date.now();
-    await cloudDb.collection('pharmacies').doc(shop).collection('devices').doc(token).set({reads:{d:o.d, n:o.n}, readsAt:Date.now()}, {merge:true});
-  }catch(e){ console.warn('পড়ার সংখ্যা ক্লাউডে যায়নি', e); }
+    await cloudDb.collection('pharmacies').doc(shop).collection('devices').doc(token).set(payload, {merge:true});
+  }catch(e){ console.warn('পড়া-লেখার সংখ্যা ক্লাউডে যায়নি', e); }
 }
-let _allReadsCache = {at:0, text:''};
-async function _allPhonesReadsText(){
+// সব ফোন মিলিয়ে আজকের ব্যবহার (শুধু মালিকের ফোনে)
+let _usageCache = {at:0, data:null};
+async function _allPhonesUsage(maxAgeMs){
   try{
-    if(typeof currentRole!=='function' || currentRole()!=='owner') return '';
+    if(typeof currentRole!=='function' || currentRole()!=='owner') return null;
     const shop = localStorage.getItem('ssn_shop_code');
-    if(!shop || typeof cloudDb==='undefined' || !cloudDb) return '';
-    if(Date.now()-_allReadsCache.at < 60000) return _allReadsCache.text;
+    if(!shop || typeof cloudDb==='undefined' || !cloudDb) return null;
+    if(_usageCache.data && Date.now()-_usageCache.at < (maxAgeMs||60000)) return _usageCache.data;
     await _reportReads();   // নিজের সর্বশেষ সংখ্যাও ঢুকিয়ে নিই
     const snap = await cloudDb.collection('pharmacies').doc(shop).collection('devices').get({source:'server'});
-    const day = new Date().toISOString().slice(0,10), me = localStorage.getItem('ssn_device_token');
-    let total = 0; const parts = [];
+    const day = quotaDay(), me = localStorage.getItem('ssn_device_token');
+    let reads = 0, writes = 0; const parts = [];
     snap.docs.forEach(d=>{
-      const x = d.data(); const n = (x.reads && x.reads.d===day) ? x.reads.n : 0;
-      total += n; parts.push((x.name && x.name!=='নতুন ডিভাইস' ? x.name : (x.role==='staff'?'কর্মচারীর ফোন':'মালিকের ফোন')) + (d.id===me?' (এই ফোন)':'') + ': ' + n);
+      const x = d.data();
+      let r = (x.reads && x.reads.d===day) ? x.reads.n : 0, w = (x.writes && x.writes.d===day) ? x.writes.n : 0;
+      if(d.id===me){ r = Math.max(r, _usageLocal('ssn_dl_reads')); w = Math.max(w, _usageLocal('ssn_dl_writes')); }
+      reads += r; writes += w;
+      parts.push({ name:(x.name && x.name!=='নতুন ডিভাইস' ? x.name : (x.role==='staff'?'কর্মচারীর ফোন':'মালিকের ফোন')), me:d.id===me, r, w });
     });
-    const t = '\nসব ফোন মিলিয়ে আজ আনুমানিক ' + total + 'টা (' + parts.join(' • ') + ')';
-    _allReadsCache = {at:Date.now(), text:t}; return t;
-  }catch(e){ return ''; }
+    try{   // সার্ভারের অটো Drive ব্যাকআপের পড়া-লেখা (সার্ভার নিজে দোকানের মূল ডকুমেন্টে লিখে রাখে; এটা শুধু চালু থাকলে আসে)
+      const su = JSON.parse(localStorage.getItem('ssn_server_usage')||'null');
+      if(su && su.d===day){ reads += (su.reads||0); writes += (su.writes||0); parts.push({ name:'সার্ভার অটো ব্যাকআপ', me:false, r:(su.reads||0), w:(su.writes||0) }); }
+    }catch(e){}
+    const data = {reads, writes, parts};
+    _usageCache = {at:Date.now(), data};
+    return data;
+  }catch(e){ return null; }
 }
+function _quotaPct(u){ return Math.max((u.reads||0)/QUOTA.reads, (u.writes||0)/QUOTA.writes); }
+function _quotaLine(u){
+  const pr = Math.round(u.reads/QUOTA.reads*100), pw = Math.round(u.writes/QUOTA.writes*100);
+  return 'পড়া '+_qn(u.reads)+' / '+_qn(QUOTA.reads)+' ('+_qn(pr)+'%) • লেখা '+_qn(u.writes)+' / '+_qn(QUOTA.writes)+' ('+_qn(pw)+'%)';
+}
+// হোম পাতার ওপরে সতর্কতা: ৭০% পেরোলে হলুদ, ৯০% পেরোলে লাল, শেষ হলে স্পষ্ট বার্তা; ৯০% ও ১০০%-এ দিনে একবার করে পপ-আপ
+function _quotaBannerRender(u){
+  const el = document.getElementById('quotaBanner'); if(!el) return;
+  if(!u){ el.style.display = 'none'; return; }
+  const p = _quotaPct(u);
+  if(p < 0.7){ el.style.display = 'none'; return; }
+  const red = p >= 0.9, done = p >= 1, paid = quotaPlan()==='paid';
+  el.style.cssText = 'display:block;margin-bottom:12px;padding:10px 12px;border-radius:12px;font-size:14px;line-height:1.5;' + ((red || (paid && done)) ? 'background:#fdecea;border:1px solid #f1aeb5;color:#8a1c1c;' : 'background:#fff7e0;border:1px solid #ecd48a;color:#7a5b00;');
+  const overR = Math.max(0, u.reads - QUOTA.reads), overW = Math.max(0, u.writes - QUOTA.writes);
+  let head, tail;
+  if(paid){
+    head = done ? '💳 <b>আজকের ফ্রি অংশ শেষ — এখন প্রতিটা পড়া/লেখায় টাকা কাটছে।</b> ' : red ? '🔴 <b>আজকের ফ্রি অংশ প্রায় শেষ — এরপর থেকে টাকা কাটা শুরু হবে।</b> ' : '⚠️ <b>আজকের ফ্রি অংশের ৭০% পেরিয়েছে।</b> ';
+    tail = done ? 'ফ্রি অংশের বাইরে আনুমানিক: পড়া '+_qn(overR)+', লেখা '+_qn(overW)+'। ক্লাউড চালুই আছে, কিছু আটকাচ্ছে না। আসল বিল Firebase/Google Cloud-এর বিলিং পাতায় দেখুন। নতুন দিন বাংলাদেশ সময় '+quotaResetText()+' শুরু।'
+               : 'ক্লাউড চালুই থাকবে, শুধু ফ্রি অংশ পেরোলে টাকা কাটবে। বাংলাদেশ সময় '+quotaResetText()+' হিসাব নতুন করে শুরু হয়।';
+  } else {
+    head = done ? '⛔ <b>আজকের ক্লাউড সীমা শেষ।</b> ' : red ? '🔴 <b>ক্লাউডের আজকের সীমা প্রায় শেষ।</b> ' : '⚠️ <b>ক্লাউডের আজকের ব্যবহার ৭০% পেরিয়েছে।</b> ';
+    tail = done ? 'বিক্রি ফোনে ঠিকঠাক চলবে, সব ডাটা ফোনে জমা থাকবে। ক্লাউডে যাওয়া/অন্য ফোনে দেখা আটকে থাকতে পারে। বাংলাদেশ সময় '+quotaResetText()+' সীমা নতুন হবে — তারপর রিপোর্ট ট্যাবে "এই ফোনে আছে, ক্লাউডে নেই — মিলিয়ে দেখুন" চেপে ক্লাউডে পাঠিয়ে নিন।'
+               : 'এখন অপ্রয়োজনীয় "পুরো ডাটা মিলিয়ে নিন" বা বারবার সিঙ্ক এড়িয়ে চলুন। বাংলাদেশ সময় '+quotaResetText()+' হিসাব নতুন করে শুরু হয়।';
+  }
+  el.innerHTML = head + '<div style="margin-top:2px;">'+_quotaLine(u)+'</div><div style="margin-top:4px;font-size:13px;">'+tail+'</div>';
+  try{
+    const lvl = done ? 100 : (red ? 90 : 0);
+    if(lvl){
+      const k = 'ssn_quota_alert', day = quotaDay(); let o = null; try{ o = JSON.parse(localStorage.getItem(k)); }catch(e){}
+      if(!o || o.d!==day || o.lvl<lvl){
+        localStorage.setItem(k, JSON.stringify({d:day, lvl}));
+        alert(paid
+          ? (done ? '💳 আজকের ফ্রি অংশ শেষ — এখন থেকে টাকা কাটছে!' : '🔴 আজকের ফ্রি অংশ প্রায় শেষ — এরপর টাকা কাটা শুরু হবে।')+'\n\n'+_quotaLine(u)+(done ? '\n\nফ্রি অংশের বাইরে আনুমানিক: পড়া '+_qn(overR)+', লেখা '+_qn(overW) : '')+'\n\nক্লাউড চালু থাকবে। আসল বিল Firebase/Google Cloud-এর বিলিং পাতায় দেখুন।'
+          : (done ? '⛔ আজকের ক্লাউড সীমা শেষ!' : '🔴 ক্লাউডের আজকের সীমা প্রায় শেষ!')+'\n\n'+_quotaLine(u)+'\n\nবিক্রি ফোনে চলবে ও ডাটা ফোনে জমা থাকবে। বাংলাদেশ সময় '+quotaResetText()+' সীমা নতুন হবে।');
+      }
+    }
+  }catch(e){}
+}
+let _qbBusy = false;
+async function quotaBannerUpdate(force){
+  try{
+    if(_qbBusy) return;
+    if(typeof currentRole!=='function' || currentRole()!=='owner' || typeof cloudReady!=='function' || !cloudReady()){ _quotaBannerRender(null); return; }
+    _qbBusy = true;
+    const u = await _allPhonesUsage(force ? 1000 : 5*60*1000);
+    _quotaBannerRender(u);
+  }catch(e){} finally{ _qbBusy = false; }
+}
+try{ setTimeout(()=>quotaBannerUpdate(true), 25000); setInterval(()=>quotaBannerUpdate(false), 5*60*1000); }catch(e){}
+function _allPhonesReadsText(){ return Promise.resolve(''); }   // পুরনো নাম — এখন updateDeltaSyncUi নিজেই দেখায়
 
 // ---------- মূল ইঞ্জিন ----------
 // ফেরত: বন্ধ করার ফাংশন (unsub); gen বদলে গেলে null; প্রথম পুরো পড়া ব্যর্থ হলে ত্রুটি ছোড়ে (কলার পুরনো পদ্ধতিতে ফিরবে)
@@ -158,8 +278,8 @@ async function deltaStart(name, bootQueryFn, handle, onErr, gen, localCountFn){
   if(!cur || _deltaNeedsFull(name, localCountFn())){
     const snap = await bootQueryFn().get({source:'server'});
     if(gen!==_deltaGen) return null;
-    deltaCountReads(snap.size);
-    handle(snap.docs, true);
+    handle(snap.docs, true);   // পড়ার গণনা SDK স্তরে হয়ে গেছে
+
     cur = deltaMaxU(snap.docs) || {s:0, n:0};
     try{
       localStorage.removeItem('ssn_dl_cur_'+name);
@@ -193,11 +313,18 @@ function updateDeltaSyncUi(){
   if(!info || !btn) return;
   const on = deltaEnabled();
   btn.textContent = on ? '⚡ দ্রুত সিঙ্ক: চালু আছে — সব ফোনে (বন্ধ করতে চাপুন)' : '⚡ দ্রুত সিঙ্ক চালু করুন (সব ফোনে)';
-  let reads = 0; try{ const o = JSON.parse(localStorage.getItem('ssn_dl_reads')); if(o && o.d===new Date().toISOString().slice(0,10)) reads = o.n; }catch(e){}
+  const reads = _usageLocal('ssn_dl_reads'), writes = _usageLocal('ssn_dl_writes');
   let last = ''; try{ const m = JSON.parse(localStorage.getItem('ssn_dl_meta_customers')||localStorage.getItem('ssn_dl_meta_medicines')); if(m) last = new Date(m.at).toLocaleDateString('en-GB'); }catch(e){}
-  const base = (on ? 'চালু' : 'বন্ধ (পুরনো পদ্ধতি)') + ' • আজ এই ফোনে ক্লাউড থেকে পড়া হয়েছে আনুমানিক ' + reads + 'টা' + (last ? ' • শেষ পুরো মেলানো: ' + last : '');
+  const base = (on ? 'চালু' : 'বন্ধ (পুরনো পদ্ধতি)') + ' • আজ এই ফোনে আনুমানিক: পড়া ' + _qn(reads) + 'টা • লেখা ' + _qn(writes) + 'টা' + (last ? ' • শেষ পুরো মেলানো: ' + last : '');
   info.textContent = base;
-  _allPhonesReadsText().then(t=>{ if(t){ info.textContent = base + t; info.style.whiteSpace = 'pre-line'; } });
+  try{ const pb = document.getElementById('quotaPlanBtn'); if(pb) pb.textContent = quotaPlan()==='paid' ? '💳 ক্লাউড প্ল্যান: পেইড (ফ্রিতে ফিরতে চাপুন)' : '☁️ ক্লাউড প্ল্যান: ফ্রি (পেইডে গেলে এখানে চাপুন)'; }catch(e){}
+  _allPhonesUsage(60000).then(u=>{
+    if(!u) return;
+    info.style.whiteSpace = 'pre-line';
+    info.textContent = base + '\nসব ফোন মিলিয়ে আজ (আনুমানিক): ' + _quotaLine(u) + '\n' + u.parts.map(x=>x.name + (x.me?' (এই ফোন)':'') + ': পড়া ' + _qn(x.r) + ', লেখা ' + _qn(x.w)).join(' • ')
+      + '\n('+(quotaPlan()==='paid' ? 'পেইড প্ল্যান: এটা দৈনিক ফ্রি অংশ — এর বেশি হলে টাকা কাটে।' : 'ফ্রি প্ল্যানের দৈনিক সীমা ধরে হিসাব।')+' বাংলাদেশ সময় ' + quotaResetText() + ' নতুন দিন শুরু হয়। কোনো ফোনে অ্যাপ পুরনো থাকলে তার লেখা এখানে ০ দেখাবে।)';
+    try{ _quotaBannerRender(u); }catch(e){}
+  });
 }
 function toggleDeltaSync(){
   const on = !deltaEnabled();
@@ -294,6 +421,7 @@ function watchDeleteLog(db, shopCode){
   const unsub = db.collection('pharmacies').doc(shopCode).onSnapshot(snap=>{
     try{
       if(!snap || !snap.exists) return;
+      try{ const _su = (snap.data()||{}).serverUsage; if(_su) localStorage.setItem('ssn_server_usage', JSON.stringify(_su)); }catch(e){}
       const list = (snap.data()||{}).delLog;
       if(Array.isArray(list) && list.length){
         applyDeleteLog(list);

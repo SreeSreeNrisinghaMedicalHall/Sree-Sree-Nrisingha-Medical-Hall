@@ -89,7 +89,6 @@ async function histFetchOld(fromStr){
   try{
     const mk = n=>{ let q = shopColl(n).where('ts','<',hf); if(fromTs) q = q.where('ts','>=',fromTs); return q.get({source:'server'}); };
     const [s,p] = await Promise.all([mk('sales'), mk('purchases')]);
-    try{ deltaCountReads(s.size+p.size); }catch(e){}
     const sIds = new Set(_hxSales.map(x=>x.id)), pIds = new Set(_hxPurchases.map(x=>x.id));
     s.docs.forEach(d=>{ if(!sIds.has(d.id)) _hxSales.push(deltaRec(d)); });
     p.docs.forEach(d=>{ if(!pIds.has(d.id)) _hxPurchases.push(deltaRec(d)); });
@@ -164,7 +163,6 @@ async function histSetWindow(months){
   try{
     const g = n=>shopColl(n).get({source:'server'});
     const [s,p,py] = await Promise.all([g('sales'), g('purchases'), g('payments')]);
-    try{ deltaCountReads(s.size+p.size+py.size); }catch(e){}
     const base = histComputeBase(w.ms, s.docs.map(deltaRec), p.docs.map(deltaRec), py.docs.map(deltaRec), customers);
     if(JSON.stringify(base).length > HIST_MAX_BASE_BYTES){ alert('আগের জেরের হিসাব অনেক বড় হয়ে গেছে — কিছুই বদলানো হয়নি। আমাকে জানান।'); return; }
     await cloudDb.collection('pharmacies').doc(shop).set({histFrom:w.ms, histBase:base, histAt:Date.now()}, {mergeFields:['histFrom','histBase','histAt']});

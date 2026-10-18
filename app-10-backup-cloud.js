@@ -202,6 +202,7 @@ async function initCloud(){
     try{ if(firebase.auth && !window._ssnAuthWatch){ window._ssnAuthWatch = true; firebase.auth().onAuthStateChanged(()=>{ try{ updateCloudStatus(); }catch(e){} }); } }catch(e){}
     cloudDb = firebase.firestore();
     _installBatchWrapper(cloudDb);
+    try{ _installWriteCounter(); }catch(e){}   // লেখার হিসাব (দৈনিক সীমার সতর্কতার জন্য)
     // Lets Firestore itself cache data and QUEUE writes in IndexedDB so they survive the app
     // being closed/reopened while offline (spotty network), not just a brief mid-session drop.
     // Safe to ignore failure (e.g. multiple tabs open) — writes still queue in-memory for this
@@ -284,6 +285,7 @@ function _installBatchWrapper(db){
     const b = orig(), costs = [];
     const w = {
       set(ref, data, opts){
+        try{ deltaCountWrites(1); }catch(e){}
         const r = un(ref);
         if(isMed(r) && _hasBuy(data)){ costs.push([r.id, data]); data = _stripBuy(data); }
         data = _batchStamp(r, data);
@@ -291,6 +293,7 @@ function _installBatchWrapper(db){
         return w;
       },
       update(ref, ...a){
+        try{ deltaCountWrites(1); }catch(e){}
         const r = un(ref);
         if(isMed(r) && a.length===1 && _hasBuy(a[0])){
           costs.push([r.id, a[0]]);
@@ -301,7 +304,7 @@ function _installBatchWrapper(db){
         if(a.length===1) a = [_batchStamp(r, a[0])];
         b.update(r, ...a); return w;
       },
-      delete(ref){ b.delete(un(ref)); return w; },
+      delete(ref){ try{ deltaCountWrites(1); }catch(e){} b.delete(un(ref)); return w; },
       commit(){ return b.commit().then(res=>{ costs.forEach(([id,d])=>_costWrite(id,d)); return res; }); }
     };
     return w;

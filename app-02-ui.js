@@ -356,6 +356,7 @@ function _cashSet(k, d, v){
 }
 /* ---------------- Dashboard ---------------- */
 function renderDashboard(){
+  try{ if(typeof quotaBannerUpdate==='function') quotaBannerUpdate(false); }catch(e){}
   const t = todayStr();
   const todaySales = sales.filter(s=>s.date===t);
   const todayPurchases = purchases.filter(p=>p.date===t);

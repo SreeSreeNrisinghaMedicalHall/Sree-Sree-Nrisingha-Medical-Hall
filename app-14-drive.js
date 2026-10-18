@@ -159,7 +159,6 @@ async function driveFullArchive(){
       toast('ক্লাউড থেকে পুরনো বিক্রি-ক্রয় আনা হচ্ছে…');
       const hf = histFrom();
       const [s,p] = await Promise.all(['sales','purchases'].map(n=>shopColl(n).where('ts','<',hf).get({source:'server'})));
-      try{ deltaCountReads(s.size+p.size); }catch(e){}
       const sIds = new Set(sales.map(x=>x.id)), pIds = new Set(purchases.map(x=>x.id));
       allSales = sales.concat(s.docs.filter(d=>!sIds.has(d.id)).map(deltaRec));
       allPurch = purchases.concat(p.docs.filter(d=>!pIds.has(d.id)).map(deltaRec));

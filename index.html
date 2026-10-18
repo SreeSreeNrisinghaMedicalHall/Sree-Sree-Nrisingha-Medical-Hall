@@ -68,6 +68,7 @@
   <main>
     <!-- DASHBOARD -->
     <section id="sec-dashboard" class="active">
+      <div id="quotaBanner" style="display:none;"></div>
       <button class="btn btn-danger btn-block" style="margin-bottom:12px;font-size:15px;" onclick="showAntibioticRegisterModal()">🧾 এন্টিবায়োটিক রেজিস্টার (ইন্সপেকশনের জন্য) — এক ট্যাপে দেখুন</button>
       <div class="grid2">
         <div class="stat accent" onclick="showTodaySales()" style="cursor:pointer;"><div class="label">আজকের বিক্রয়</div><div class="value" id="dToday">৳০</div></div>
@@ -366,6 +367,7 @@
         <button class="btn btn-sm btn-outline btn-block" id="deltaSyncBtn" style="margin-top:8px;" onclick="toggleDeltaSync()">⚡ দ্রুত সিঙ্ক চালু করুন</button>
         <button class="btn btn-sm btn-outline btn-block" style="margin-top:6px;" onclick="deltaFullResync()">🔄 পুরো ডাটা এখনই মিলিয়ে নিন</button>
         <button class="btn btn-sm btn-outline btn-block" id="broadcastDelBtn" style="margin-top:6px;" onclick="broadcastTrashDeletes()">📣 আগে মোছা রেকর্ড কর্মচারীর ফোন থেকেও সরান (একবার)</button>
+        <button class="btn btn-sm btn-outline btn-block" id="quotaPlanBtn" style="margin-top:6px;" onclick="toggleQuotaPlan()">☁️ ক্লাউড প্ল্যান: ফ্রি (পেইডে গেলে এখানে চাপুন)</button>
         <div class="row-sub" id="deltaSyncInfo" style="margin-top:6px;"></div>
         <div class="row-sub" style="margin-top:8px;">ফোন হারালে বা নষ্ট হলেও ডাটা যেন ফিরে পান, এবং একাধিক ফোনে একসাথে নিরাপদে বিক্রি করতে পারেন — এর জন্য একবার ক্লাউড সংযোগ করে নিন। সংযোগ করলে প্রতিটা ফোনের এন্ট্রি সাথে সাথে সব ফোনে দেখা যাবে।</div>
         <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="openModal('cloudModalBackdrop')">☁ ক্লাউড সংযোগ করুন / দেখুন</button>
