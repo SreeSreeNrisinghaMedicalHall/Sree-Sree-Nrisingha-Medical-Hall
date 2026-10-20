@@ -230,7 +230,11 @@ function pickSaleCustomer(id, name){
 // a real-looking 11-digit বাংলাদেশি mobile (not name alone) — matching by name only risks
 // silently merging two different people who just happen to share a common name, which is a much
 // worse mistake than leaving a sale untracked. Never overrides a কাস্টমার the user already picked.
+// v60: মালিকের সিদ্ধান্তে এই স্বয়ংক্রিয় সেভ/লিংক বন্ধ — রোগীর মোবাইল লিখে ঘর থেকে সরলে আর কোনো কাস্টমার নিজে নিজে তৈরি বা লিংক হয় না।
+// কাস্টমার ট্যাবে নাম যাবে শুধু মালিক নিজে সেভ করলে, অথবা প্রেসক্রিপশন/টেস্ট থেকে বিক্রয়ে জিজ্ঞেসের উত্তরে "হ্যাঁ" বললে।
+// (নিচের কোড আগের মতোই আছে, শুধু এই এক লাইনের জন্য চলে না — আবার চালু করতে লাইনটা সরালেই হবে।)
 function syncPatientToSaleCustomer(){
+  return;
   const custSel = document.getElementById('saleCustomer');
   if(!custSel || custSel.value) return;
   const name = (document.getElementById('patientName')?.value||'').trim();
@@ -522,7 +526,12 @@ function completeSaleInner(){
 
   // A real medicine sale in this customer's name is exactly the signal that turns a
   // test-only "provisional" record into a proper customer, so it now shows in the কাস্টমার tab.
-  const custWasProvisional = !!(cust && cust.provisional);
+  // শুধু-টেস্টের রোগীকে আসল কাস্টমার করার আগে জিজ্ঞেস করা হয়। বাকি রাখলে বাকির হিসাবের জন্য কাস্টমার ট্যাবে সেভ করতেই হয়, তাই তখন জিজ্ঞেস না করে জানিয়ে দেওয়া হয়।
+  let custWasProvisional = !!(cust && cust.provisional), _savedBecauseDue = false;
+  if(custWasProvisional){
+    if(dueAdded>0){ _savedBecauseDue = true; }
+    else if(!askSaveCustomerName(cust.name, cust.mobile||patientMobile||'', 'বিক্রয় ঠিকই হবে, শুধু কাস্টমার ট্যাবে নাম সেভ হবে না')) custWasProvisional = false;
+  }
   if(custWasProvisional) cust.provisional = false;
 
   // সবসময় আগে লোকাল ফোনে সাথে সাথে আপডেট করি — ইন্টারনেট/ক্লাউডে সমস্যা হলেও যেন বিক্রয়ের হিসাব ফোনে দেখা যায়
@@ -559,8 +568,9 @@ function completeSaleInner(){
   // Success is guaranteed visible on its own — even if showReceipt() below hiccups for any
   // reason (slow device, a bad field on this particular sale), the cashier still sees a clear
   // "done" signal instead of silently wondering whether to press the button again.
-  toast('✓ বিক্রয় সম্পন্ন হয়েছে');
+  toast('✓ বিক্রয় সম্পন্ন হয়েছে' + (_savedBecauseDue ? ' — বাকি থাকায় "'+(cust?cust.name:'')+'" কাস্টমার ট্যাবে সেভ হলো' : ''));
   try{
+    _freshSaleId = saleRecord.id;   // এইমাত্র হওয়া বিক্রয়ের রশিদ — ফেরত/আবার-বিক্রয়ের বোতাম এখানে দেখানো হয় না
     showReceipt(saleRecord);
   }catch(e){
     console.error('receipt render failed', e);
@@ -738,8 +748,10 @@ function toggleReceiptSplit(v){ _rcptSplit = !!v; if(_rcptSale) showReceipt(_rcp
 let _rcptOpenedAt = 0, _lastSaleId = null;
 function closeReceiptSafe(){ if(Date.now() - _rcptOpenedAt < 900) return; closeModal('receiptModalBackdrop'); }
 function showLastReceipt(){ const sl = _lastSaleId ? sales.find(x=>x.id===_lastSaleId) : [...sales].sort((a,b)=>b.ts-a.ts)[0]; if(sl) showReceipt(sl); else toast('এখনো কোনো বিক্রয় নেই'); }
+let _freshSaleId = null, _rcptCurFresh = false;
 function showReceipt(sale, keepSplit){
   _rcptOpenedAt = Date.now();
+  if(!keepSplit){ _rcptCurFresh = (!!sale && sale.id===_freshSaleId); if(_rcptCurFresh) _freshSaleId = null; }   // শুধু প্রথমবার দেখানোর সময় 'নতুন'; পরে শেষ রশিদ/রিপোর্ট/খোঁজা থেকে খুললে বোতামগুলো আসে
   _rcptSale = sale; if(!keepSplit) _rcptSplit = false;
   const dt = new Date(sale.ts);
   const dateStr = dt.toLocaleDateString('bn-BD') + ' ' + dt.toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'});
@@ -798,7 +810,8 @@ function showReceipt(sale, keepSplit){
     document.getElementById('rcptSplitChk').checked = _rcptSplit;
   }catch(e){}
   try{ returnUpdateReceiptBtn(sale); }catch(e){}
-  try{ const _rb = document.getElementById('rcptResellBox'); if(_rb){ _rb.style.display = (sale.isReturn || !(sale.items||[]).length) ? 'none' : 'block'; const _ri = document.getElementById('rcptResell_amt'); if(_ri && !keepSplit) _ri.value = ''; } }catch(e){}
+  if(_rcptCurFresh){ try{ const _rbn = document.getElementById('rcptReturnBtn'); if(_rbn) _rbn.style.display = 'none'; }catch(e){} }
+  try{ const _rb = document.getElementById('rcptResellBox'); if(_rb){ _rb.style.display = (sale.isReturn || _rcptCurFresh || !(sale.items||[]).length) ? 'none' : 'block'; const _ri = document.getElementById('rcptResell_amt'); if(_ri && !keepSplit) _ri.value = ''; } }catch(e){}
   openModal('receiptModalBackdrop');
 }
 function shopQrHtml(){

@@ -638,14 +638,26 @@ function applyRxRecordToSaleForm(rec){
   // ever clobber it back to ওয়াক-ইন. rec.patientName is a required field on every saved
   // prescription (savePrescription() refuses to save without it), so cust below is never null.
   const mobile = (rec.patientMobile||'').trim();
-  const existedBefore = mobile && customers.some(x=>(x.mobile||'').trim()===mobile);
-  const cust = findOrCreateCustomerFor(rec.patientName, rec.patientMobile, rec.patientAddress);
-  if(cust){
+  const existing = existingRealCustomerFor(rec.patientName, rec.patientMobile);
+  if(existing){
+    // আগে থেকেই কাস্টমার ট্যাবে আছে — নতুন কিছু সেভ হচ্ছে না, তাই শুধু লিংক করি (বাকি/ইতিহাস ঠিক জায়গায় জমার জন্য)
     renderSaleCustomerSelect();
-    pickSaleCustomer(cust.id, cust.name);
-    if(existedBefore && (cust.name||'').trim().toLowerCase() !== (rec.patientName||'').trim().toLowerCase()){
-      toast(mobile+' নম্বরটি আগে থেকেই "'+cust.name+'" নামে সেভ করা আছে — বাকি/ইতিহাস "'+cust.name+'"-এর নামেই জমা হবে। এটা ভুল/অন্য মানুষ হলে কাস্টমার ঘর থেকে বদলে নতুন কাস্টমার বানান।');
+    pickSaleCustomer(existing.id, existing.name);
+    if((existing.name||'').trim().toLowerCase() !== (rec.patientName||'').trim().toLowerCase()){
+      toast(mobile+' নম্বরটি আগে থেকেই "'+existing.name+'" নামে সেভ করা আছে — বাকি/ইতিহাস "'+existing.name+'"-এর নামেই জমা হবে। এটা ভুল/অন্য মানুষ হলে কাস্টমার ঘর থেকে বদলে নতুন কাস্টমার বানান।');
     }
+  } else if(askSaveCustomerName(rec.patientName, mobile, 'বিক্রয় ওয়াক-ইন হিসেবে হবে, রোগীর নাম শুধু রশিদে থাকবে')){
+    const cust = findOrCreateCustomerFor(rec.patientName, rec.patientMobile, rec.patientAddress);
+    if(cust){
+      if(cust.provisional){   // আগে শুধু টেস্টের রোগী হিসেবে লুকানো ছিল — এখন আসল কাস্টমার
+        cust.provisional = false; save(DB_KEYS.customer, customers);
+        if(cloudReady()) shopColl('customers').doc(cust.id).update({provisional:false}).catch(e=>console.error(e));
+      }
+      renderSaleCustomerSelect();
+      pickSaleCustomer(cust.id, cust.name);
+    }
+  } else {
+    toast('কাস্টমার ট্যাবে সেভ করা হয়নি — শুধু রোগীর নাম রশিদে থাকবে');
   }
 }
 function toastRxSellResult(result){
@@ -842,6 +854,7 @@ function _peopleLine(list, c){
   return `<div class="row-sub" style="margin-top:3px;color:#7a5b00;">নামে আছে: ${parts.join(' • ')}${sp.others.length>4?' …+'+(sp.others.length-4):''}</div>`;
 }
 function renderCustomers(){
+  try{ const _ub = document.getElementById('uselessCustBtn'); if(_ub) _ub.style.display = (currentRole()==='owner') ? '' : 'none'; }catch(e){}
   const el = document.getElementById('customerList');
   try{
     const q = (document.getElementById('customerSearch')?.value||'').toLowerCase();

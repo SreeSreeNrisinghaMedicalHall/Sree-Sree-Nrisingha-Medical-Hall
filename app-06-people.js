@@ -321,6 +321,70 @@ function saveCustomer(){
 // creates a new one automatically when neither matches. Used to link prescription-originated
 // sales (and could be reused for other flows) to real customer records instead of leaving
 // them as untracked walk-ins.
+// আগে থেকে কাস্টমার ট্যাবে থাকা (আসল, provisional নয়) কাস্টমার — মোবাইল মিললে সে, না থাকলে মোবাইল-ছাড়া একই নামের জন
+function existingRealCustomerFor(name, mobile){
+  name = (name||'').trim(); mobile = (mobile||'').trim();
+  let c = null;
+  if(mobile) c = customers.find(x=>(x.mobile||'').trim() === mobile);
+  if(!c && name) c = customers.find(x=>!x.mobile && (x.name||'').trim().toLowerCase()===name.toLowerCase());
+  return (c && !c.provisional) ? c : null;
+}
+// নতুন নাম কাস্টমার ট্যাবে সেভ হওয়ার আগে মালিককে জিজ্ঞেস করা (OK = সেভ, Cancel = সেভ নয়)
+function askSaveCustomerName(name, mobile, noteIfNo){
+  return confirm('রোগীর নাম "'+(name||'')+'"'+(mobile?' (মোবাইল: '+mobile+')':'')+' কি কাস্টমার ট্যাবে সেভ করবেন?\n\nOK চাপলে — হ্যাঁ, কাস্টমার হিসেবে সেভ হবে (বাকি/ইতিহাস এই নামে জমা হবে)\nCancel চাপলে — না, সেভ হবে না'+(noteIfNo?' ('+noteIfNo+')':''));
+}
+// ===== অপ্রয়োজনীয় কাস্টমারের তালিকা (শুধু মালিক) =====
+// যাদের কোনো বিক্রয় নেই, কোনো জমা/বাকি-যোগের এন্ট্রি নেই, বাকিও ০ — শুধু নাম-মোবাইল সেভ করা আছে। (আগে মোবাইল-ঘর থেকে সরলে স্বয়ংক্রিয় সেভ হতো, সেগুলো এখানে ধরা পড়বে।)
+// কিছুই নিজে নিজে মোছে না — মালিক বেছে নিলে তবেই মোছে, আর মোছার নিয়ম হুবহু সাধারণ "কাস্টমার মুছুন"-এর মতো।
+let _uselessSel = new Set();
+function uselessCustomerList(){
+  const all = (typeof rcptAllSales==='function') ? rcptAllSales() : sales;
+  const hasSale = new Set(); all.forEach(x=>{ if(x.customerId) hasSale.add(x.customerId); });
+  const hasPay = new Set(); payments.forEach(p=>{ if(p.customerId) hasPay.add(p.customerId); });
+  return customers.filter(c=>!c.provisional && !(Math.abs(c.due||0) > 0.5) && !hasSale.has(c.id) && !hasPay.has(c.id));
+}
+// আইডি থেকে সেভের তারিখ (আইডি বানানো হয় সময় দিয়ে); না পেলে খালি
+function _custSavedDate(id){
+  try{ const t = parseInt(String(id).slice(0,8), 36); if(t > 1577836800000 && t < 1893456000000) return new Date(t).toLocaleDateString('bn-BD'); }catch(e){}
+  return '';
+}
+function openUselessCustomers(){
+  if(!requireOwnerRole('কাস্টমার মোছা')) return;
+  _uselessSel = new Set();
+  _uselessRender();
+  openModal('detailModalBackdrop');
+}
+function _uselessRender(){
+  const list = uselessCustomerList().sort((a,b)=>String(b.id).localeCompare(String(a.id)));
+  document.getElementById('detailModalTitle').textContent = 'বিক্রয়/বাকি নেই এমন কাস্টমার ('+rcptBn(list.length)+')';
+  const histNote = (typeof histOn==='function' && histOn()) ? '<div class="row-sub" style="color:#b42318;margin-bottom:8px;">⚠️ ইতিহাস-সীমা চালু আছে — সীমার আগের পুরনো বিক্রয় এখানে ধরা হয় না। কাউকে মোছার আগে নিশ্চিত হয়ে নিন তার কোনো পুরনো বিক্রয় নেই।</div>' : '';
+  document.getElementById('detailModalContent').innerHTML = histNote
+    + '<div class="row-sub" style="margin-bottom:8px;">এখানে শুধু তারাই আছে যাদের কোনো বিক্রয়, জমা বা বাকি নেই — শুধু নাম/মোবাইল সেভ করা। যাদের বাদ দিতে চান টিক দিয়ে নিচের বোতাম চাপুন। কিছুই নিজে নিজে মুছবে না।</div>'
+    + (list.length ? `<div style="display:flex;gap:8px;margin-bottom:8px;"><button class="btn btn-sm btn-outline" style="flex:1;" onclick="_uselessAll(true)">সব বাছুন</button><button class="btn btn-sm btn-outline" style="flex:1;" onclick="_uselessAll(false)">বাছাই বাদ</button></div>` : '')
+    + (list.length ? list.map(c=>{
+        const d = _custSavedDate(c.id);
+        return `<label class="row-item" style="cursor:pointer;gap:10px;align-items:center;"><input type="checkbox" ${_uselessSel.has(c.id)?'checked':''} onchange="_uselessTick('${c.id}',this.checked)" style="width:22px;height:22px;flex:0 0 auto;"><div style="flex:1;min-width:0;"><div class="row-title">${escapeHtml(c.name||'(নাম নেই)')}</div><div class="row-sub">${escapeHtml(c.mobile||'মোবাইল নেই')}${c.address?' • '+escapeHtml(c.address):''}${d?' • সেভ: '+d:''}</div></div></label>`;
+      }).join('') : '<div class="empty-state" style="padding:18px;">এমন কোনো কাস্টমার নেই 👍</div>')
+    + (list.length ? `<button class="btn btn-block" id="uselessDelBtn" style="margin-top:12px;background:#b42318;color:#fff;" onclick="uselessDeleteSelected()">🗑 বাছাইগুলো মুছুন (${rcptBn(_uselessSel.size)})</button>` : '');
+}
+function _uselessTick(id, on){ if(on) _uselessSel.add(id); else _uselessSel.delete(id); const b = document.getElementById('uselessDelBtn'); if(b) b.textContent = '🗑 বাছাইগুলো মুছুন ('+rcptBn(_uselessSel.size)+')'; }
+function _uselessAll(on){ _uselessSel = new Set(on ? uselessCustomerList().map(c=>c.id) : []); _uselessRender(); }
+function uselessDeleteSelected(){
+  if(!requireOwnerRole('কাস্টমার মোছা')) return;
+  const still = new Set(uselessCustomerList().map(c=>c.id));   // মোছার ঠিক আগে আবার যাচাই — এর মধ্যে কারও বিক্রয়/বাকি হয়ে থাকলে সে বাদ
+  const ids = [..._uselessSel].filter(id=>still.has(id));
+  if(!ids.length){ toast('কাউকে বাছা হয়নি'); return; }
+  if(!askDelete(rcptBn(ids.length)+' জন কাস্টমার মুছে ফেলবেন?\n\n(এদের কোনো বিক্রয়, জমা বা বাকি নেই — শুধু নাম/মোবাইল সেভ করা ছিল)\n\nমুছলেও সেটিংস → "পরিবর্তনের লগ ও রিসাইকেল বিন" থেকে ফেরানো যাবে।')) return;
+  const gone = new Set(ids);
+  customers = customers.filter(c=>!gone.has(c.id));
+  ids.forEach(id=>addTombstoneLogged(id));
+  save(DB_KEYS.customer, customers);
+  if(cloudReady()) ids.forEach(id=>shopColl('customers').doc(id).delete().catch(e=>console.error(e)));
+  _uselessSel = new Set();
+  toast(rcptBn(ids.length)+' জন কাস্টমার মুছে ফেলা হয়েছে ✓');
+  try{ renderCustomers(); }catch(e){}
+  _uselessRender();
+}
 function findOrCreateCustomerFor(name, mobile, address, provisional){
   name = (name||'').trim(); mobile = (mobile||'').trim(); address = (address||'').trim();
   if(!name) return null;

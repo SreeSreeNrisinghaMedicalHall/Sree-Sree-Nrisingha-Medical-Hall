@@ -257,6 +257,7 @@
         <input type="text" id="customerSearch" placeholder="কাস্টমার খুঁজুন (নাম/মোবাইল)..." oninput="renderCustomers()">
       </div>
       <button class="btn btn-sm btn-outline btn-block" style="margin-top:8px;" onclick="downloadAllCustomerVcf()">📇 ছবিসহ কাস্টমারদের ফোনের কন্টাক্টে নিন</button>
+      <button class="btn btn-sm btn-outline btn-block" id="uselessCustBtn" style="margin-top:8px;display:none;" onclick="openUselessCustomers()">🧹 যাদের বিক্রয়/বাকি কিছুই নেই — তালিকা দেখুন</button>
       <div class="card" id="customerList"></div>
       <h3 class="section-h"><span class="dot"></span>সাপ্লায়ার <span class="tag-en">Suppliers</span></h3>
       <button class="btn btn-outline btn-block" onclick="openSupplierModal()">+ নতুন সাপ্লায়ার</button>
