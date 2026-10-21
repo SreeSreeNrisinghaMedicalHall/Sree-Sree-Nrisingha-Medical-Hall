@@ -230,6 +230,7 @@
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openCompanyFixer()">🏢 কোম্পানির নাম ঠিক করুন / মিলিয়ে দিন</button>
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openGenericFiller()">🧬 জেনেরিক নাম একসাথে ভরুন</button>
       <button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="openGenericImport()">📥 প্রস্তাবিত জেনেরিক বসান (যাচাই করে)</button>
+      <button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="openDrugClassImport()">🗂 গ্রুপ বসান — মেডেক্সের মতো (যাচাই করে)</button>
       <div id="medSelectBar" style="display:none;margin-top:8px;">
         <button class="btn btn-danger btn-block" onclick="deleteSelectedMedicines()" id="medDeleteSelectedBtn">নির্বাচিতগুলো মুছুন (০)</button>
       </div>
@@ -238,7 +239,11 @@
         <div class="stat blue"><div class="label">মোট ক্রয়মূল্য (স্টক)</div><div class="value" id="medTotalValue">৳০</div></div>
       </div>
       <div class="search-wrap" style="margin-top:12px;">
-        <input type="text" id="medSearch" placeholder="ওষুধ খুঁজুন..." oninput="renderMedicines()">
+        <input type="text" id="medSearch" placeholder="ওষুধ, জেনেরিক বা গ্রুপ খুঁজুন..." oninput="renderMedicines()">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+        <select id="medClassFilter" onchange="renderMedicines()" style="flex:1;min-width:0;padding:9px;border:1px solid #ccc;border-radius:10px;font-size:14px;"><option value="">গ্রুপ: সব</option></select>
+        <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:13px;white-space:nowrap;"><input type="checkbox" id="medByClass" onchange="renderMedicines()" style="width:18px;height:18px;flex:0 0 18px;padding:0;margin:0;"> গ্রুপ ধরে সাজান</label>
       </div>
       <div class="card" id="medicineList"></div>
     </section>
@@ -519,9 +524,11 @@
       <div class="row-sub" style="margin-top:2px;">প্যাকের ভেতরে থাকা ট্যাবলেট/ক্যাপসুলের মোট সংখ্যা লিখুন (এটা ওষুধভেদে ভিন্ন হয় — কোনোটায় ১০টা, কোনোটায় ২০টা, কোনোটায় ৩০টা থাকে)। প্রেসক্রিপশনে যে ডোজ লেখা হবে সেই অনুযায়ী বিক্রির সময় এই সংখ্যা দিয়ে হিসাব করে ক'টা কৌটা লাগবে বের হবে।</div>
     </div>
     <div class="field-row">
-      <div><label>জেনেরিক নাম</label><input type="text" id="mGeneric" oninput="checkAutoAntibiotic()"></div>
+      <div><label>জেনেরিক নাম</label><input type="text" id="mGeneric" oninput="checkAutoAntibiotic();suggestMedClassHint()"></div>
       <div><label>কোম্পানি</label><input type="text" id="mCompany"></div>
     </div>
+    <div><label>গ্রুপ (ড্রাগ ক্লাস — মেডেক্সের মতো)</label><input type="text" id="mDrugClass" list="mClassList" autocomplete="off" placeholder="যেমন: Proton Pump Inhibitors (PPI)"><datalist id="mClassList"></datalist>
+      <div id="mClassHint" class="row-sub" style="display:none;margin-top:2px;"></div></div>
     <div class="field-row">
       <div><label>ক্রয় মূল্য (৳) *</label><input type="number" id="mBuy" min="0"></div>
       <div><label>বিক্রয় মূল্য (৳) *</label><input type="number" id="mSell" min="0"></div>
@@ -1047,7 +1054,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js", "app-17-generic-data.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js", "app-17-generic-data.js", "app-18-drug-classes.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

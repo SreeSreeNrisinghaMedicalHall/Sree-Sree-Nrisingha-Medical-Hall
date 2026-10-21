@@ -126,9 +126,17 @@ function currentRole(){ return sessionStorage.getItem('ssn_role') || 'owner'; }
 // rendering) means typing `medicines` in devtools during a staff session shows sell price/stock
 // but never cost price. Confirmed safe to strip: no বিক্রয়/ক্রয়/কাস্টমার-tab feature reads
 // med.buy — a purchase entry's price is typed fresh each time, never defaulted from it.
+let _staffStripped = false;
 function stripCostPriceForStaff(){
-  if(currentRole()==='staff') medicines.forEach(m=>{ delete m.buy; });
+  if(currentRole()==='staff'){ medicines.forEach(m=>{ delete m.buy; }); _staffStripped = true; }
 }
+// ===== PIN-এর আগে ক্লাউড থেকে ডেটা লোড বন্ধ (v71) =====
+// আগে অ্যাপ খোলার সাথে সাথে — PIN দেওয়ার আগেই — ক্লাউডের পুরো ডেটার লিসেনার চালু হয়ে যেত। তখন ভূমিকা (মালিক/কর্মচারী) জানা থাকে না
+// (ডিফল্ট "মালিক" ধরা হয়), তাই কর্মচারীর ফোনেও মালিকের-জন্য-শুধু কাজগুলো (ক্রয়মূল্য আনা ইত্যাদি) PIN-এর আগেই চলত; আর কেউ PIN ছাড়া
+// অ্যাপ খুলে রাখলেও পড়ার কোটা খরচ হতো। এখন PIN ঠিক হওয়ার পর, ভূমিকা জানার পর তবেই ক্লাউডের ডেটা লোড শুরু হয়।
+// (PIN মেলানোর হ্যাশ আনা আলাদা — সেটা আগের মতোই PIN-এর আগে হয়, কারণ সেটা ছাড়া PIN মেলানোই যায় না।)
+function _cloudConfigured(){ return !!(localStorage.getItem('ssn_cloud_config') && localStorage.getItem('ssn_shop_code')); }
+function _appUnlocked(){ return sessionStorage.getItem('ssn_unlocked')==='1'; }
 // If the SAME browser tab later switches from a staff session to an owner session (logout +
 // re-enter the owner PIN, no page reload), the shared `medicines` array could still be the
 // staff-stripped copy from a moment ago — the owner's dashboard/reports need real cost prices
@@ -374,8 +382,11 @@ async function submitLockPin(){
       registerDevice(role);
       applyRoleGating();
       try{ updateCloudStatus(); }catch(e){}
+      // ক্লাউডের ডেটা লোড এখান থেকেই শুরু (PIN-এর আগে না)। একই ট্যাবে আগে অন্য ভূমিকায় বসানো থাকলে (কর্মচারী→মালিক) নতুন ভূমিকায় আবার বসে।
+      const _needAttach = _cloudConfigured() && (_cloudAttachedRole===null || _cloudAttachedRole!==role || !liveListeners.length);
+      if(_needAttach){ try{ attachRealtimeListeners(); }catch(e){ console.error(e); } }
       if(role==='staff') stripCostPriceForStaff();
-      else refreshMedicinesFromCloud(); // undo any stripping a prior staff session in this same tab may have left behind
+      else if(_staffStripped){ _staffStripped = false; refreshMedicinesFromCloud(); } // undo any stripping a prior staff session in this same tab may have left behind
     } else {
       const attempts = incrementFailedAttempts();
       if(isLockedOut()){
@@ -540,12 +551,14 @@ async function verifySecurityAnswers(){
     localStorage.setItem('ssn_migrated_suppo_v1','1');
     // Cloud sync (if configured) usually hasn't connected yet this early in Init, so push
     // these specific changes a few seconds later once it has, instead of losing them.
+    // ক্লাউড এখন PIN-এর পরে চালু হয়, তাই এখানে চালু না হওয়া পর্যন্ত ৫ সেকেন্ড পরপর দেখা হয় (সর্বোচ্চ ~১৭ মিনিট)
+    let _tries = 0;
     const pushToCloud = ()=>{
       if(cloudLive && cloudDb){
         const batch = cloudDb.batch();
         changedItems.forEach(m=>{ const {id, ...fields} = m; batch.set(shopColl('medicines').doc(id), fields, {merge:true}); });
         batch.commit().catch(e=>console.error(e));
-      }
+      } else if(++_tries < 200){ setTimeout(pushToCloud, 5000); }
     };
     if(localStorage.getItem('ssn_cloud_config')) setTimeout(pushToCloud, 5000);
   } else {
@@ -572,12 +585,12 @@ updateCloudStatus();
 updateStorageUsageDisplay();
 updateLockUI();
 initLockGate();
-if(localStorage.getItem('ssn_cloud_config') && localStorage.getItem('ssn_shop_code')){
-  attachRealtimeListeners();   // অফলাইনেও চেষ্টা করে — স্ক্রিপ্ট জমা থাকলে লেখাগুলো লাইনে থেকে ইন্টারনেট ফিরলে যাবে
+if(_cloudConfigured() && _appUnlocked()){
+  attachRealtimeListeners();   // এই সেশনে আগেই PIN দেওয়া (পেজ রিলোড) — ভূমিকা জানা আছে। নইলে PIN দেওয়ার পর শুরু হয় (submitLockPin)। অফলাইনেও চেষ্টা করে — লেখাগুলো লাইনে থেকে ইন্টারনেট ফিরলে যাবে
 }
 window.addEventListener('offline', ()=>{ cloudLive = false; updateCloudStatus(); });
 window.addEventListener('online', ()=>{
-  if(localStorage.getItem('ssn_cloud_config') && localStorage.getItem('ssn_shop_code')){
+  if(_cloudConfigured() && _appUnlocked()){
     // পড়া খরচ কমাতে: নেট ঝিমিয়ে আবার এলে সব লিসেনার ভেঙে নতুন করে পুরো ডাটা পড়া হতো।
     // লিসেনার আগে থেকেই চালু ও কোনো ত্রুটি না থাকলে Firestore নিজেই সংযোগ ফিরিয়ে নেয় — শুধু অবস্থা আপডেট করি।
     if(typeof liveListeners!=='undefined' && liveListeners.length && !localStorage.getItem('ssn_last_sync_error')){

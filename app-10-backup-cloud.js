@@ -165,6 +165,7 @@ function importData(evt){
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
 let cloudDb = null;
 let liveListeners = [];
+let _cloudAttachedRole = null;   // কোন ভূমিকায় (owner/staff) শেষবার ক্লাউড-লিসেনার বসেছে — PIN দিয়ে ভূমিকা বদলালে নতুন করে বসানোর জন্য
 async function initCloud(){
   const cfgText = localStorage.getItem('ssn_cloud_config');
   if(!cfgText) return null;
@@ -490,6 +491,7 @@ async function openPendingUploads(){
   }catch(e){ console.error(e); toast('মেলানো যায়নি: '+(e&&e.message?e.message:e)); }
 }
 async function attachRealtimeListeners(){
+  _cloudAttachedRole = (typeof currentRole==='function') ? currentRole() : null;
   const db = await initCloud();
   const shopCode = localStorage.getItem('ssn_shop_code');
   if(!db || !shopCode) return;

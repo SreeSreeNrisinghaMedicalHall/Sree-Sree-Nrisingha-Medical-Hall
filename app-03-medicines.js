@@ -27,6 +27,20 @@ function checkAutoAntibiotic(){
     if(hint) hint.style.display = 'none';
   }
 }
+// ওষুধের গ্রুপ (ড্রাগ ক্লাস)। এখানে রাখা, যাতে গ্রুপের তালিকার ফাইল (app-18) কোনো কারণে না এলেও ওষুধ ট্যাব না ভাঙে।
+function medDrugClass(m){ return String((m && m.drugClass)||'').trim(); }
+// জেনেরিক লিখলে/খুললে গ্রুপের প্রস্তাব (চাপলে বসে — নিজে থেকে কিছু বদলায় না)
+function suggestMedClassHint(){
+  const hint = document.getElementById('mClassHint'), inp = document.getElementById('mDrugClass');
+  if(!hint || !inp) return;
+  hint.style.display = 'none'; hint.innerHTML = '';
+  if(typeof suggestDrugClass!=='function') return;
+  if(String(inp.value||'').trim()) return;
+  const sg = suggestDrugClass(document.getElementById('mGeneric').value||'');
+  if(!sg) return;
+  hint.innerHTML = 'প্রস্তাবিত গ্রুপ: <b>'+escapeHtml(sg.cls)+'</b>'+(sg.sure?'':' <span class="badge badge-gold">অনুমান</span>')+' — <a href="#" onclick="document.getElementById(\'mDrugClass\').value=this.dataset.c;document.getElementById(\'mClassHint\').style.display=\'none\';return false;" data-c="'+escapeHtml(sg.cls)+'" style="color:#1e7e4f;font-weight:700;">বসান</a>';
+  hint.style.display = 'block';
+}
 function onMedTypeChange(){
   const type = document.getElementById('mType').value;
   const needsBottle = (type==='সিরাপ' || type==='সাসপেনশন' || type==='ড্রপ' || type==='এন্টিসেপটিক');
@@ -76,6 +90,9 @@ function openMedModal(id, prefillName){
   document.getElementById('mPackCount').value = m ? (m.packCount||'') : '';
   onMedTypeChange();
   document.getElementById('mGeneric').value = m ? (m.generic||'') : '';
+  { const _dc = document.getElementById('mDrugClass'); if(_dc) _dc.value = m ? (m.drugClass||'') : '';
+    const _dl = document.getElementById('mClassList'); if(_dl && typeof DRUG_CLASS_LIST!=='undefined') _dl.innerHTML = DRUG_CLASS_LIST.map(c=>'<option value="'+escapeHtml(c)+'">').join(''); }
+  suggestMedClassHint();
   document.getElementById('mCompany').value = m ? (m.company||'') : '';
   document.getElementById('mBuy').value = m ? m.buy : '';
   document.getElementById('mSell').value = m ? m.sell : '';
@@ -139,6 +156,7 @@ function saveMedicine(){
   }
   const fields = {
     name, generic:document.getElementById('mGeneric').value.trim(),
+    drugClass:(document.getElementById('mDrugClass')?document.getElementById('mDrugClass').value:'').trim().replace(/\s+/g,' '),
     company:document.getElementById('mCompany').value.trim(),
     buy, sell, stock:parseInt(document.getElementById('mStock').value)||0,
     lowLimit:parseInt(document.getElementById('mLowLimit').value)||10,
@@ -593,6 +611,19 @@ function deleteSelectedMedicines(){
   document.getElementById('medSelectBar').style.display = 'none';
   renderMedicines();
 }
+// গ্রুপ-ফিল্টারের তালিকা: যে গ্রুপে ওষুধ আছে সেগুলো, সংখ্যাসহ। বাছা গ্রুপ ধরে রাখে।
+function _refreshMedClassFilter(){
+  const el = document.getElementById('medClassFilter'); if(!el || !el.dataset) return;
+  const cnt = {}; let none = 0;
+  medicines.forEach(m=>{ const c = medDrugClass(m); if(c) cnt[c] = (cnt[c]||0)+1; else none++; });
+  const names = Object.keys(cnt).sort((a,b)=>a.localeCompare(b));
+  const sig = names.map(n=>n+':'+cnt[n]).join('|')+'|'+none;
+  if(el.dataset.sig === sig) return;
+  const cur = el.value;
+  el.innerHTML = '<option value="">গ্রুপ: সব ('+medicines.length+')</option>' + names.map(n=>'<option value="'+escapeHtml(n)+'">'+escapeHtml(n)+' ('+cnt[n]+')</option>').join('') + (none ? '<option value="__none">— গ্রুপ দেওয়া নেই ('+none+')</option>' : '');
+  el.dataset.sig = sig;
+  el.value = (cur==='__none' || cnt[cur]) ? cur : '';
+}
 function renderMedicines(){
   const q = (document.getElementById('medSearch')?.value||'').toLowerCase();
   const _sameGen = new Set();
@@ -601,6 +632,7 @@ function renderMedicines(){
   if(q.trim()){
     const _qq = q.trim(), _have = new Set(list.map(m=>m.id));
     list = list.concat(medicines.filter(m=>!_have.has(m.id) && String(m.generic||'').toLowerCase().includes(_qq)));
+    { const _hv = new Set(list.map(m=>m.id)); list = list.concat(medicines.filter(m=>!_hv.has(m.id) && medDrugClass(m).toLowerCase().includes(_qq))); }   // গ্রুপের নাম লিখেও খোঁজা যায়
     // ব্র্যান্ডের নাম লিখলেও: প্রথম ৩টা মেলা ওষুধের জেনেরিক ধরে একই জেনেরিকের অন্য কোম্পানির ওষুধ নিচে যোগ হয় ("একই জেনেরিক" দেখায়)
     const _keys = new Set(); list.slice(0,3).forEach(m=>{ const k = _genKey(m.generic); if(k) _keys.add(k); });
     if(_keys.size){
@@ -611,6 +643,17 @@ function renderMedicines(){
     }
   }
   const _showGen = !!q.trim();
+  // গ্রুপ ফিল্টার ও "গ্রুপ ধরে সাজান" (মেডেক্সের মতো)
+  _refreshMedClassFilter();
+  const _cfEl = document.getElementById('medClassFilter'), _cfv = _cfEl ? _cfEl.value : '';
+  if(_cfv) list = list.filter(m=> _cfv==='__none' ? !medDrugClass(m) : medDrugClass(m)===_cfv);
+  const _byClass = !!(document.getElementById('medByClass') && document.getElementById('medByClass').checked);
+  if(_byClass) list = list.map((m,i)=>[m,i]).sort((a,b)=>{ const ca = medDrugClass(a[0]) || '\uffff', cb = medDrugClass(b[0]) || '\uffff'; return ca===cb ? a[1]-b[1] : ca.localeCompare(cb); }).map(x=>x[0]);
+  let _lastCls = null;
+  const _clsHead = m=>{ if(!_byClass) return ''; const c = medDrugClass(m) || 'গ্রুপ দেওয়া নেই'; if(c===_lastCls) return ''; _lastCls = c;
+    const n = list.filter(x=>(medDrugClass(x)||'গ্রুপ দেওয়া নেই')===c).length;
+    return '<div class="row-sub" style="margin:10px 0 2px;padding:5px 8px;background:#e8f3ec;border-radius:8px;font-weight:700;color:#1B4D3E;">🗂 '+escapeHtml(c)+' • '+n+'টা</div>'; };
+  const _clsSub = m=> (!_byClass && medDrugClass(m)) ? ' • <span style="color:#1B4D3E;">'+escapeHtml(medDrugClass(m))+'</span>' : '';
   const totalItemsEl = document.getElementById('medTotalItems');
   const totalValueEl = document.getElementById('medTotalValue');
   if(totalItemsEl){
@@ -620,7 +663,7 @@ function renderMedicines(){
   }
   const el = document.getElementById('medicineList');
   if(medSelectMode){
-    el.innerHTML = list.length ? list.map(m=>`
+    el.innerHTML = list.length ? list.map(m=>_clsHead(m)+`
       <div class="row-item" onclick="toggleMedSelected('${m.id}');this.querySelector('input').checked=selectedMedIds.has('${m.id}');document.getElementById('medDeleteSelectedBtn').textContent='নির্বাচিতগুলো মুছুন ('+selectedMedIds.size+')';" style="cursor:pointer;">
         <div style="display:flex;align-items:center;gap:10px;">
           <input type="checkbox" ${selectedMedIds.has(m.id)?'checked':''} style="width:18px;height:18px;pointer-events:none;">
@@ -629,9 +672,9 @@ function renderMedicines(){
         <span class="badge ${m.stock<=m.lowLimit?'badge-red':'badge-green'}">স্টক: ${m.stock}</span>
       </div>`).join('') : `<div class="empty-state">কোনো ওষুধ পাওয়া যায়নি</div>`;
   } else {
-    el.innerHTML = list.length ? list.map(m=>`
+    el.innerHTML = list.length ? list.map(m=>_clsHead(m)+`
       <div class="row-item" onclick="openMedModal('${m.id}')" style="cursor:pointer;">
-        <div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)} ${m.isAntibiotic?'<span class="badge badge-red" style="margin-left:4px;">এন্টিবায়োটিক</span>':''}</div><div class="row-sub">${m.company||'—'} ${m.batch?'• ব্যাচ:'+m.batch:''}${(_showGen && m.generic)?' • জেনেরিক: '+escapeHtml(m.generic):''}${_sameGen.has(m.id)?' • <b style="color:#1e7e4f;">একই জেনেরিক</b>':''}</div></div>
+        <div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)} ${m.isAntibiotic?'<span class="badge badge-red" style="margin-left:4px;">এন্টিবায়োটিক</span>':''}</div><div class="row-sub">${m.company||'—'} ${m.batch?'• ব্যাচ:'+m.batch:''}${(_showGen && m.generic)?' • জেনেরিক: '+escapeHtml(m.generic):''}${_clsSub(m)}${_sameGen.has(m.id)?' • <b style="color:#1e7e4f;">একই জেনেরিক</b>':''}</div></div>
         <div class="row-right"><div class="row-title">${fmt(m.sell)}</div>
         <span class="badge ${m.stock<=m.lowLimit?'badge-red':'badge-green'}">স্টক: ${m.stock}</span></div>
       </div>`).join('') : `<div class="empty-state">কোনো ওষুধ পাওয়া যায়নি — উপরে থেকে যোগ করুন</div>`;

@@ -750,7 +750,7 @@ function openGenericFiller(){
     <div class="row-sub" style="margin:4px 0 8px;">যে ওষুধের জেনেরিক ঘর ফাঁকা, সেগুলো এখানে। পাশের ঘরে নাম লিখে বাইরে চাপলেই সংরক্ষণ হয়। আগে লেখা নাম সাজেশনে আসবে — একই বানানে লিখুন। না জানলে ফাঁকা রেখে পরেরটায় যান।</div>
     <div id="gfCount" class="row-sub" style="font-weight:700;margin-bottom:6px;"></div>
     <input type="text" id="gfSearch" placeholder="ওষুধ বা কোম্পানি খুঁজুন..." autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:10px;font-size:15px;">
-    <div style="margin:8px 0;"><label style="font-size:13px;"><input type="checkbox" id="gfAll"> যেগুলোতে আগে থেকে জেনেরিক আছে সেগুলোও দেখান</label></div>
+    <div style="margin:8px 0;"><label style="font-size:13px;display:flex;gap:8px;align-items:center;"><input type="checkbox" id="gfAll" style="width:20px;height:20px;flex:0 0 20px;padding:0;"> যেগুলোতে আগে থেকে জেনেরিক আছে সেগুলোও দেখান</label></div>
     <datalist id="gfGenList"></datalist>
     <div id="gfList"></div>
     <button id="gfMore" class="btn btn-outline btn-block" style="margin-top:8px;display:none;">আরও দেখান</button>
@@ -808,8 +808,8 @@ function openGenericImport(){
   const $ = s=>ov.querySelector(s);
   $('#giList').innerHTML = rows.map((o,i)=>`
     <div style="padding:7px 0;border-bottom:1px dashed #ddd;">
-      <label style="display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" class="giCk" data-i="${i}" ${o.r[3]==='S'?'checked':''} style="margin-top:4px;flex-shrink:0;">
-      <span style="min-width:0;overflow-wrap:anywhere;"><span style="font-weight:600;">${escapeHtml((typePrefixPlain(o.m.type)||'')+(o.m.name||''))}</span> <span class="row-sub">• ${escapeHtml(o.m.company||'—')}</span>${o.r[3]==='G'?' <span class="badge badge-gold">অনুমান</span>':''}</span></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;margin:0;width:100%;box-sizing:border-box;"><input type="checkbox" class="giCk" data-i="${i}" ${o.r[3]==='S'?'checked':''} style="width:20px;height:20px;min-width:20px;flex:0 0 20px;margin:2px 0 0;padding:0;">
+      <span style="flex:1 1 0;min-width:0;overflow-wrap:break-word;word-break:normal;"><span style="font-weight:600;">${escapeHtml((typePrefixPlain(o.m.type)||'')+(o.m.name||''))}</span> <span class="row-sub">• ${escapeHtml(o.m.company||'—')}</span>${o.r[3]==='G'?' <span class="badge badge-gold">অনুমান</span>':''}</span></label>
       <input type="text" class="giVal" data-i="${i}" value="${escapeHtml(o.r[2])}" style="width:100%;box-sizing:border-box;margin:4px 0 0 26px;max-width:calc(100% - 26px);padding:8px;border:1px solid #ccc;border-radius:10px;font-size:15px;">
     </div>`).join('') || '<div class="empty-state">প্রস্তাব দেওয়া সব ওষুধে জেনেরিক আগেই ভরা আছে ✓</div>';
   const cks = ()=>[...ov.querySelectorAll('.giCk')];
@@ -828,6 +828,71 @@ function openGenericImport(){
     save(DB_KEYS.med, medicines);
     if(cloudReady()) picks.forEach(x=>{ try{ shopColl('medicines').doc(x.m.id).set({generic:x.m.generic},{merge:true}).catch(e=>console.error(e)); }catch(e){} });
     ov.remove(); toast(n+'টা ওষুধে জেনেরিক বসানো হয়েছে ✓');
+    try{ renderMedicines(); }catch(e){}
+  };
+  upd();
+}
+// ===== গ্রুপ বসান — মেডেক্সের ড্রাগ ক্লাসের মতো (যাচাই করে) =====
+// ওষুধের জেনেরিক নাম (না থাকলে v69-এর প্রস্তাবিত জেনেরিক) থেকে গ্রুপ প্রস্তাব। গ্রুপ ফাঁকা ওষুধগুলোর তালিকা, গ্রুপ ধরে সাজানো।
+// নিশ্চিতগুলো টিক দেওয়া, "অনুমান"গুলো টিক ছাড়া। প্রতিটা ঘরে গ্রুপ বদলানো যায়; "বসান" চাপলে শুধু টিক দেওয়াগুলো সেভ হয়।
+// আগে থেকে গ্রুপ দেওয়া ওষুধে হাত দেয় না। ক্লাউডে শুধু drugClass ঘরটা merge হয়।
+function _dcRows(){
+  if(typeof suggestDrugClass!=='function') return null;
+  const sugById = {};
+  if(typeof GENERIC_SUGGESTIONS!=='undefined') GENERIC_SUGGESTIONS.forEach(r=>{ if(r[3]==='S') sugById[r[0]] = r; });
+  const rows = [];
+  medicines.forEach(m=>{
+    if(medDrugClass(m)) return;
+    let g = String(m.generic||'').trim(), fromSug = false;
+    if(!g){ const r = sugById[m.id]; if(r && String(m.name||'')===r[1]){ g = r[2]; fromSug = true; } }
+    if(!g) return;
+    const sg = suggestDrugClass(g);
+    if(!sg) return;
+    rows.push({ m, g, fromSug, cls: sg.cls, sure: sg.sure });
+  });
+  rows.sort((a,b)=>a.cls.localeCompare(b.cls) || String(a.m.name||'').localeCompare(String(b.m.name||'')));
+  return rows;
+}
+function openDrugClassImport(){
+  const rows = _dcRows();
+  if(!rows){ toast('গ্রুপের তালিকা পাওয়া যায়নি'); return; }
+  const noGen = medicines.filter(m=>!medDrugClass(m) && !String(m.generic||'').trim()).length;
+  const ov = _supOverlay(`
+    <div style="font-weight:800;font-size:17px;">🗂 গ্রুপ বসান</div>
+    <div class="row-sub" style="margin:4px 0 8px;">${rows.length}টা ওষুধের জন্য গ্রুপ (মেডেক্সের ড্রাগ ক্লাস) প্রস্তাব করা হয়েছে, জেনেরিক নাম দেখে। প্রতিটা দেখুন — ভুল হলে ঘরে গ্রুপ বদলান বা টিক তুলে বাদ দিন। <b>"অনুমান"</b> লেখাগুলো টিক ছাড়া আছে। আগে থেকে গ্রুপ দেওয়া ওষুধে হাত পড়বে না।${noGen?` <br>আরও <b>${noGen}টা</b> ওষুধের জেনেরিক ফাঁকা — আগে "🧬 জেনেরিক নাম ভরুন" বা "📥 প্রস্তাবিত জেনেরিক বসান" করলে সেগুলোরও গ্রুপ আসবে।`:''}</div>
+    <datalist id="dcClassList">${DRUG_CLASS_LIST.map(c=>'<option value="'+escapeHtml(c)+'">').join('')}</datalist>
+    <div style="display:flex;gap:8px;margin-bottom:8px;"><button id="dcAll" class="btn btn-outline" style="flex:1;">সব টিক</button><button id="dcNone" class="btn btn-outline" style="flex:1;">সব টিক তুলুন</button></div>
+    <div id="dcList"></div>
+    <button id="dcSave" class="btn btn-primary btn-block" style="margin-top:10px;"></button>
+    <button id="dcClose" class="btn btn-block" style="margin-top:8px;background:#f1f1f1;">বন্ধ করুন</button>`);
+  const $ = s=>ov.querySelector(s);
+  let lastCls = null, html = '';
+  rows.forEach((o,i)=>{
+    if(o.cls!==lastCls){ lastCls = o.cls; html += '<div class="row-sub" style="margin:10px 0 2px;padding:5px 8px;background:#e8f3ec;border-radius:8px;font-weight:700;color:#1B4D3E;">🗂 '+escapeHtml(o.cls)+'</div>'; }
+    html += `
+    <div style="padding:7px 0;border-bottom:1px dashed #ddd;">
+      <label style="display:flex;gap:10px;align-items:flex-start;margin:0;width:100%;box-sizing:border-box;"><input type="checkbox" class="dcCk" data-i="${i}" ${o.sure?'checked':''} style="width:20px;height:20px;min-width:20px;flex:0 0 20px;margin:2px 0 0;padding:0;">
+      <span style="flex:1 1 0;min-width:0;overflow-wrap:break-word;word-break:normal;"><span style="font-weight:600;">${escapeHtml((typePrefixPlain(o.m.type)||'')+(o.m.name||''))}</span> <span class="row-sub">• ${escapeHtml(o.m.company||'—')} • ${escapeHtml(o.g)}${o.fromSug?' (প্রস্তাবিত জেনেরিক)':''}</span>${o.sure?'':' <span class="badge badge-gold">অনুমান</span>'}</span></label>
+      <input type="text" class="dcVal" data-i="${i}" list="dcClassList" value="${escapeHtml(o.cls)}" style="width:100%;box-sizing:border-box;margin:4px 0 0 26px;max-width:calc(100% - 26px);padding:8px;border:1px solid #ccc;border-radius:10px;font-size:15px;">
+    </div>`;
+  });
+  $('#dcList').innerHTML = html || '<div class="empty-state">প্রস্তাব দেওয়ার মতো ওষুধ নেই — সবার গ্রুপ দেওয়া আছে, বা জেনেরিক ফাঁকা ✓</div>';
+  const cks = ()=>[...ov.querySelectorAll('.dcCk')];
+  const upd = ()=>{ const n = cks().filter(c=>c.checked).length; const b = $('#dcSave'); b.textContent = '✔ টিক দেওয়া '+n+'টা বসান'; b.disabled = n===0; };
+  ov.addEventListener('change', e=>{ if(e.target.classList && e.target.classList.contains('dcCk')) upd(); });
+  $('#dcAll').onclick = ()=>{ cks().forEach(c=>c.checked=true); upd(); };
+  $('#dcNone').onclick = ()=>{ cks().forEach(c=>c.checked=false); upd(); };
+  $('#dcClose').onclick = ()=>{ ov.remove(); try{ renderMedicines(); }catch(e){} };
+  $('#dcSave').onclick = function(){
+    const picks = cks().filter(c=>c.checked).map(c=>{ const i = +c.dataset.i; const v = String(ov.querySelector('.dcVal[data-i="'+i+'"]').value||'').trim().replace(/\s+/g,' '); return { m: rows[i].m, v }; }).filter(x=>x.v);
+    if(!picks.length){ toast('কিছু টিক দেওয়া নেই'); return; }
+    if(!confirm(picks.length+'টা ওষুধে গ্রুপ বসবে। ঠিক আছে?')) return;
+    this.disabled = true;
+    const done = [];
+    picks.forEach(x=>{ if(!medDrugClass(x.m)){ x.m.drugClass = x.v; done.push(x.m); } });   // ইতিমধ্যে গ্রুপ থাকলে (অন্য ফোনে) ছুঁই না
+    save(DB_KEYS.med, medicines);
+    if(cloudReady()) done.forEach(m=>{ try{ shopColl('medicines').doc(m.id).set({drugClass:m.drugClass},{merge:true}).catch(e=>console.error(e)); }catch(e){} });
+    ov.remove(); toast(done.length+'টা ওষুধে গ্রুপ বসানো হয়েছে ✓');
     try{ renderMedicines(); }catch(e){}
   };
   upd();
