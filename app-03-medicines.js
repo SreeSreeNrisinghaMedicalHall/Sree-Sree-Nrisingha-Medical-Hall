@@ -82,6 +82,7 @@ function openMedModal(id, prefillName){
   document.getElementById('mBatch').value = m ? (m.batch||'') : '';
   document.getElementById('mBarcode').value = m ? (m.barcode||'') : '';
   document.getElementById('mExpiry').value = m ? (m.expiry||'') : '';
+  { const _li = document.getElementById('mLotsInfo'); if(_li){ try{ _li.innerHTML = m ? (medLotsHtml(m)+medAltHtml(m)) : ''; }catch(e){ _li.innerHTML=''; } } }
   document.getElementById('mStock').value = m ? m.stock : 0;
   document.getElementById('mLowLimit').value = m ? m.lowLimit : 10;
   document.getElementById('mAntibiotic').checked = m ? !!m.isAntibiotic : false;
@@ -536,7 +537,7 @@ function confirmScannedMedicines(){
   if(missingType.length){ toast(`"${missingType[0].name}"-সহ ${missingType.length}টা সারির ধরন বেছে নিন, তারপর আবার চেষ্টা করুন`); return; }
   const newOnes = [];
   chosen.forEach(r=>{
-    const name = r.name.trim().replace(/\s+/g,' ');
+    const name = (r.name||'').trim().replace(/\s+/g,' ');
     const type = r.type;
     const item = {
       id: uid(), name, generic:'', company:'', buy:0, sell:0,

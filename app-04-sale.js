@@ -197,7 +197,7 @@ function renderSaleCustomerSearch(){
   const resEl = document.getElementById('saleCustomerResults');
   const matches = _recentFirst(rankBy(customers, q, c=>c.name, [c=>c.mobile, c=>c.guardian, c=>c.address]), _justAdded('cust')).slice(0,15);
   let html = `<div class="row-item" onclick="pickSaleCustomer('','ওয়াক-ইন কাস্টমার')" style="cursor:pointer;padding:9px 10px;"><div class="row-title" style="font-size:13.5px;">— ওয়াক-ইন কাস্টমার —</div></div>`;
-  html += matches.map(c=>`<div class="row-item" onclick="pickSaleCustomer('${c.id}','${c.name.replace(/'/g,"\\'")}')" style="cursor:pointer;padding:9px 10px;"><div class="row-title" style="font-size:13.5px;">${escapeHtml(c.name||'')}</div><div class="row-sub">${c.mobile||'—'}${c.due>0?' • বাকি '+fmt(c.due):(c.due<0?' • অগ্রিম '+fmt(-c.due):'')}</div></div>`).join('');
+  html += matches.map(c=>`<div class="row-item" onclick="pickSaleCustomer('${c.id}','${(c.name||'').replace(/'/g,"\\'")}')" style="cursor:pointer;padding:9px 10px;"><div class="row-title" style="font-size:13.5px;">${escapeHtml(c.name||'')}</div><div class="row-sub">${c.mobile||'—'}${c.due>0?' • বাকি '+fmt(c.due):(c.due<0?' • অগ্রিম '+fmt(-c.due):'')}</div></div>`).join('');
   // No saved customer matches what's typed (or nothing typed yet but this covers the
   // requested case: typing an unrecognized/new name should offer to save them as a
   // fresh customer, right from the POS search, instead of staying an untracked walk-in).
@@ -279,7 +279,7 @@ function hidePrescriberSuggestion(i){
   const p = _prescriberMatches[i];
   if(!p) return;
   const hidden = getHiddenPrescribers();
-  const key = p.name.trim().toLowerCase();
+  const key = (p.name||'').trim().toLowerCase();
   if(!hidden.includes(key)){ hidden.push(key); localStorage.setItem('ssn_hidden_prescribers', JSON.stringify(hidden)); }
   renderPrescriberSuggestions();
 }
@@ -293,8 +293,8 @@ function getUniquePrescribers(includeHidden){
   try{ savedDoctors().forEach(d=>{ const k = (d.name||'').trim().toLowerCase(); if(!k) return; const prev = map.get(k); map.set(k, {name:d.name.trim(), title:d.title||(prev&&prev.title)||'', type:d.type||(prev&&prev.type)||'', ts:(prev&&prev.ts)||1}); }); }catch(e){}   // সংরক্ষিত তালিকা (app-16)
   const hidden = getHiddenPrescribers();
   const all = Array.from(map.values());
-  if(includeHidden) return all.map(p=>({...p, hidden:hidden.includes(p.name.trim().toLowerCase())})).sort((a,b)=>b.ts-a.ts);
-  return all.filter(p=>!hidden.includes(p.name.trim().toLowerCase())).sort((a,b)=>b.ts-a.ts);
+  if(includeHidden) return all.map(p=>({...p, hidden:hidden.includes((p.name||'').trim().toLowerCase())})).sort((a,b)=>b.ts-a.ts);
+  return all.filter(p=>!hidden.includes((p.name||'').trim().toLowerCase())).sort((a,b)=>b.ts-a.ts);
 }
 let _prescriberMatches = [];
 let _hiddenPrescriberMatches = []; // names that matched the typed text but are on the hidden list — surfaced with an "আবার দেখান" recovery link
@@ -313,7 +313,7 @@ function renderPrescriberSuggestions(){
 }
 function unhideMatchingPrescribers(){
   if(!_hiddenPrescriberMatches.length) return;
-  const toRemove = _hiddenPrescriberMatches.map(p=>p.name.trim().toLowerCase());
+  const toRemove = _hiddenPrescriberMatches.map(p=>(p.name||'').trim().toLowerCase());
   const updated = getHiddenPrescribers().filter(k=>!toRemove.includes(k));
   localStorage.setItem('ssn_hidden_prescribers', JSON.stringify(updated));
   toast('আবার দেখানো হচ্ছে ✓');
@@ -669,12 +669,8 @@ function showAllLowStock(){
   openModal('detailModalBackdrop');
 }
 function showAllExpiry(){
-  const soon = medicines.filter(m=>m.expiry).map(m=>({...m, days:(new Date(m.expiry)-new Date())/86400000})).filter(m=>m.days<60).sort((a,b)=>a.days-b.days);
-  const rows = soon.map(m=>`
-    <div class="row-item" onclick="closeModal('detailModalBackdrop');goToMedicine('${m.id}')" style="cursor:pointer;">
-      <div><div class="row-title">${escapeHtml(m.name||'')}</div><div class="row-sub">ব্যাচ: ${m.batch||'—'}</div></div>
-      <span class="badge ${m.days<0?'badge-red':'badge-gold'}">${m.days<0?'মেয়াদ শেষ':Math.ceil(m.days)+' দিন বাকি'}</span>
-    </div>`).join('');
+  const soon = expiryAlerts();
+  const rows = soon.map(a=>expiryRowHtml(a,true)).join('');
   document.getElementById('detailModalTitle').textContent = 'সব মেয়াদ সতর্কতা (' + soon.length + 'টা)';
   document.getElementById('detailModalContent').innerHTML = rows || `<div class="empty-state">কোনো সতর্কতা নেই ✓</div>`;
   openModal('detailModalBackdrop');

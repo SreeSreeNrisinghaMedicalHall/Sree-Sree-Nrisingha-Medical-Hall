@@ -36,7 +36,7 @@ function sortMedicinesGrouped(list){
     if(ba!==bb) return ba<bb?-1:1;
     const ta = medTypeOrderIndex(a.type), tb = medTypeOrderIndex(b.type);
     if(ta!==tb) return ta-tb;
-    return a.name.localeCompare(b.name);
+    return (a.name||'').localeCompare(b.name||'');
   });
 }
 function displayDosageText(med, dosageText){
@@ -932,7 +932,7 @@ function _unhideName(c, name){
 function _nameRemaining(cid, name){
   const c = customers.find(x=>x.id===cid); if(!c) return null;
   const list = _buildPeopleIndex()[cid] || [];
-  if(name){ const k = name.trim().toLowerCase(); const e = list.find(p=>p.name.trim().toLowerCase()===k); return e ? Math.round((e.taken-e.paid)*100)/100 : 0; }
+  if(name){ const k = name.trim().toLowerCase(); const e = list.find(p=>(p.name||'').trim().toLowerCase()===k); return e ? Math.round((e.taken-e.paid)*100)/100 : 0; }
   const sp = _dueSplit(list, c); return sp.others.length ? Math.max(0, sp.own) : null;
 }
 function _setupForPicker(pfx, c, preName){

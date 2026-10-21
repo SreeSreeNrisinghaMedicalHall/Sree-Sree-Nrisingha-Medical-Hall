@@ -42,6 +42,70 @@ function renderSaleJustAdded(){
   box.style.display = 'block';
   box.innerHTML = `<button type="button" class="btn btn-sm btn-outline" style="margin-top:6px;" onclick="pickSaleCustomer('${c.id}','${(c.name||'').replace(/'/g,"\\'")}');renderSaleJustAdded();">🆕 এইমাত্র যোগ করা: ${escapeHtml(c.name||'')}${c.mobile?' • '+escapeHtml(c.mobile):''} — চাপুন</button>`;
 }
+// ===== ব্যাচ অনুযায়ী মেয়াদ (হিসাব করা, আনুমানিক) =====
+// আগে ওষুধে শুধু শেষ ক্রয়ের মেয়াদ থাকত — নতুন ব্যাচ কিনলে পুরনো ব্যাচের (যেটার মেয়াদ আগে শেষ) মেয়াদ চুপচাপ ঢাকা পড়ত।
+// এখন প্রতিটা ক্রয় একটা "ব্যাচ-লট" (ব্যাচ, মেয়াদ, পরিমাণ ইতিমধ্যে সেভ থাকে)। স্টকের বর্তমান সংখ্যা ধরে হিসাব হয় কোন লটের কয়টা এখনো আছে —
+// ধরা হয় পুরনো ক্রয়ের ওষুধ আগে বিক্রি হয়েছে (FIFO), তাই বাকি স্টক সবচেয়ে নতুন ক্রয়গুলোর। এটা শুধু দেখানোর হিসাব: স্টক, বিক্রয়, ক্রয়ের
+// কোনো সংখ্যা বা ক্লাউডের কোনো ডেটা এতে বদলায় না। আসল তাকে কোন ব্যাচ আছে তা ভিন্ন হলে (যেমন নতুন ব্যাচ আগে বিক্রি হয়ে গেছে) এটা আনুমানিক থাকবে।
+function medLots(med){
+  if(!med) return { lots:[], unknown:0, tracked:false };
+  let S = Math.max(0, +med.stock||0);
+  const src = purchases.filter(x=>x.medicineId===med.id && !x.isReturn && x.qty>0)
+    .sort((a,b)=>(b.ts||0)-(a.ts||0));   // নতুন ক্রয় আগে
+  const lots = [];
+  for(const x of src){
+    if(S<=0) break;
+    const q = Math.min(x.qty, S);
+    lots.push({ pid:x.id, batch:x.batch||'', expiry:x.expiry||'', qty:q, bought:x.qty, date:x.date||'' });
+    S -= q;
+  }
+  const anyExp = src.some(x=>x.expiry);
+  return { lots, unknown:S, tracked:anyExp };
+}
+function expiryAlerts(limitDays){
+  const lim = limitDays==null ? 60 : limitDays, out = [], now = Date.now();
+  medicines.forEach(m=>{
+    if(!((+m.stock||0)>0)) return;
+    const L = medLots(m);
+    if(L.tracked){
+      L.lots.forEach(l=>{ if(l.expiry){ const d = (new Date(l.expiry)-now)/86400000; if(d<lim) out.push({ m, batch:l.batch, expiry:l.expiry, qty:l.qty, days:d }); } });
+    } else if(m.expiry){   // কোনো ক্রয়ে মেয়াদ নেই — আগের মতো ওষুধের নিজের মেয়াদ
+      const d = (new Date(m.expiry)-now)/86400000; if(d<lim) out.push({ m, batch:m.batch||'', expiry:m.expiry, qty:(+m.stock||0), days:d });
+    }
+  });
+  return out.sort((a,b)=>a.days-b.days);
+}
+function expiryRowHtml(a, closeFirst){
+  return `<div class="row-item" onclick="${closeFirst?"closeModal('detailModalBackdrop');":''}goToMedicine('${a.m.id}')" style="cursor:pointer;"><div><div class="row-title">${escapeHtml(a.m.name||'')}</div><div class="row-sub">ব্যাচ: ${escapeHtml(a.batch||'—')} • ${a.qty}টা (আনুমানিক) • মেয়াদ ${escapeHtml(a.expiry)}</div></div>
+    <span class="badge ${a.days<0?'badge-red':'badge-gold'}">${a.days<0?'মেয়াদ শেষ':Math.ceil(a.days)+' দিন বাকি'}</span></div>`;
+}
+function medLotsHtml(med){
+  const L = medLots(med);
+  if(!L.lots.length) return '';
+  const now = Date.now();
+  const rows = L.lots.map(l=>{
+    const d = l.expiry ? (new Date(l.expiry)-now)/86400000 : null;
+    const tag = d===null ? '' : (d<0 ? ' <span class="badge badge-red">মেয়াদ শেষ</span>' : (d<60 ? ' <span class="badge badge-gold">'+Math.ceil(d)+' দিন</span>' : ''));
+    return `<div class="row-sub" style="margin:2px 0;">ব্যাচ ${escapeHtml(l.batch||'—')} • মেয়াদ ${escapeHtml(l.expiry||'—')} • ${l.qty}টা (কেনা ${l.bought}, ${escapeHtml(l.date)})${tag}</div>`;
+  }).join('');
+  return `<div style="margin:6px 0;padding:8px;border:1px dashed var(--border,#ccc);border-radius:10px;"><div style="font-weight:700;font-size:13px;">📦 ব্যাচ অনুযায়ী (আনুমানিক — পুরনো ক্রয় আগে বিক্রি হয়েছে ধরে)</div>${rows}${L.unknown>0?`<div class="row-sub">ব্যাচ অজানা: ${L.unknown}টা (শুরুর স্টক বা পুরনো ক্রয়)</div>`:''}</div>`;
+}
+// ===== একই জেনেরিক নামের অন্য ওষুধ (আপনার নিজের ওষুধ তালিকার ভেতরে) =====
+// শুধু দেখানোর হিসাব — কোনো ডেটা বদলায় না। জেনেরিক ঘর যাদের খালি তাদের এখানে ধরা হয় না। শক্তি (mg) আলাদা হলে বিক্রয়ের আগে নিজে মিলিয়ে নেবেন।
+function _genKey(g){ return String(g||'').toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g,' ').trim(); }
+function medAlternatives(med){
+  const k = _genKey(med && med.generic); if(!k) return [];
+  return medicines.filter(m=>m.id!==med.id && _genKey(m.generic)===k)
+    .sort((a,b)=>((+b.stock>0)-(+a.stock>0)) || (a.sell||0)-(b.sell||0));
+}
+function medAltHtml(med){
+  if(!_genKey(med.generic)) return '';
+  const alts = medAlternatives(med);
+  if(!alts.length) return '<div class="row-sub" style="margin:4px 0;">একই জেনেরিকের আর কোনো ওষুধ আপনার তালিকায় নেই।</div>';
+  return `<div style="margin:6px 0;padding:8px;border:1px dashed var(--border,#ccc);border-radius:10px;"><div style="font-weight:700;font-size:13px;">🔁 একই জেনেরিকের অন্য ওষুধ (${alts.length}টা)</div>`
+    + alts.slice(0,12).map(m=>`<div class="row-sub" style="margin:2px 0;">${escapeHtml((typePrefixPlain(m.type)||'')+(m.name||''))} • ${escapeHtml(m.company||'—')} • বিক্রয় ৳${m.sell||0} • <b style="color:${(+m.stock>0)?'#1e7e4f':'#b42318'};">স্টক ${m.stock||0}</b></div>`).join('')
+    + '</div>';
+}
 let editingPurchaseId = null;
 function renderPurchaseSelects(){
   // এন্ট্রির মাঝখানে ক্লাউড/অন্য ফোন থেকে তালিকা হালনাগাদ হলে এই ফাংশন আবার চলে। আগে এটা লুকানো ওষুধ/সাপ্লায়ার বাছাই

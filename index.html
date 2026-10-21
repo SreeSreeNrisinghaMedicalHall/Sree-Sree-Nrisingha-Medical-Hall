@@ -532,6 +532,7 @@
       <div><label>ব্যাচ নম্বর</label><input type="text" id="mBatch"></div>
       <div><label>মেয়াদ উত্তীর্ণের তারিখ</label><input type="date" id="mExpiry"></div>
     </div>
+    <div id="mLotsInfo"></div>
     <label>বারকোড (ঐচ্ছিক) — প্যাকেটের গায়ের নম্বর</label>
     <div style="display:flex;gap:8px;"><input type="text" id="mBarcode" inputmode="numeric" placeholder="স্ক্যান করুন বা লিখুন" style="flex:1;min-width:0;"><button type="button" class="btn btn-outline" onclick="startBarcodeScan(function(c){document.getElementById('mBarcode').value=c;})">📷 স্ক্যান</button></div>
     <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">

@@ -394,12 +394,36 @@ function showDeadStock(){
 
 // ===== কম স্টকের অর্ডার তালিকা (কোম্পানি ধরে) =====
 let _orderGroups = [];
+// গত ৩০ দিনে প্রতিটা ওষুধ দিনে গড়ে কয়টা বিক্রি হয়েছে (ফেরতের পরিমাণ ঋণাত্মক, তাই নিজে বাদ যায়) — অর্ডারের প্রস্তাবিত পরিমাণ ও "শীঘ্র শেষ" ধরার জন্য।
+// শুধু দেখানোর হিসাব: স্টক/বিক্রয়ের কোনো ডেটা বদলায় না।
+const ORDER_DAYS_COVER = 15, ORDER_SOON_DAYS = 7;
+function _dailySalesMap(){
+  const now = Date.now(), from = now - 30*86400000, sold = new Map();
+  let first = now;
+  sales.forEach(s=>{
+    const t = s.ts||0; if(t<from) return; if(t<first) first = t;
+    (s.items||[]).forEach(it=>{ const q = Number(it.qty)||0; if(it.id) sold.set(it.id, (sold.get(it.id)||0)+q); });
+  });
+  const days = Math.min(30, Math.max(7, (now-first)/86400000));   // অ্যাপ নতুন হলে ৭ দিনের কম ধরি না
+  const out = new Map(); sold.forEach((q,id)=>{ if(q>0) out.set(id, q/days); });
+  return out;
+}
 function _buildOrderGroups(){
-  const low = medicines.filter(m=>(Number(m.stock)||0) <= (Number(m.lowLimit)||0));
+  const _rate = _dailySalesMap();
+  const low = medicines.filter(m=>{
+    const st = Number(m.stock)||0, r = _rate.get(m.id)||0;
+    return st <= (Number(m.lowLimit)||0) || (r>0 && st>0 && st/r < ORDER_SOON_DAYS);   // সীমায় না নামলেও বিক্রির হারে ৭ দিনে শেষ হবে এমন ওষুধও
+  });
   const lastP = new Map();
   purchases.forEach(p=>{ if(p.isReturn) return; const c = lastP.get(p.medicineId); if(!c || (p.ts||0) > (c.ts||0)) lastP.set(p.medicineId, p); });
   const by = new Map();
-  low.forEach(m=>{ const c = (m.company||'').trim() || 'কোম্পানির নাম নেই'; if(!by.has(c)) by.set(c, []); by.get(c).push({m, p:lastP.get(m.id)}); });
+  low.forEach(m=>{
+    const c = (m.company||'').trim() || 'কোম্পানির নাম নেই'; if(!by.has(c)) by.set(c, []);
+    const r = _rate.get(m.id)||0, st = Math.max(0, Number(m.stock)||0), p = lastP.get(m.id);
+    let sugg = r>0 ? Math.ceil(r*ORDER_DAYS_COVER - st) : 0;
+    if(!(sugg>0)) sugg = (st <= (Number(m.lowLimit)||0) && p) ? p.qty : 0;   // বিক্রির হিসাব না থাকলে শেষবার যত কিনেছিলেন
+    by.get(c).push({m, p, rate:r, sugg, soon: st > (Number(m.lowLimit)||0)});
+  });
   _orderGroups = [...by.entries()].map(([company, items])=>({company, items:items.sort((a,b)=>(a.m.name||'').localeCompare(b.m.name||''))})).sort((a,b)=>b.items.length - a.items.length);
   return _orderGroups;
 }
@@ -407,21 +431,21 @@ function showOrderList(){
   const g = _buildOrderGroups(); const n = g.reduce((a,x)=>a+x.items.length, 0);
   document.getElementById('detailModalTitle').textContent = '🛒 কম স্টকের তালিকা ('+n+'টা ওষুধ)';
   document.getElementById('detailModalContent').innerHTML =
-    '<div class="row-sub" style="margin-bottom:8px;">যে ওষুধের স্টক "লো স্টক সীমা"-র সমান বা কম। কোম্পানিতে চাপলে সেই কোম্পানির তালিকা খুলবে — সেখান থেকে লিখে বা শেয়ার করে অর্ডার দিতে পারবেন।</div>' +
+    '<div class="row-sub" style="margin-bottom:8px;">যে ওষুধের স্টক "লো স্টক সীমা"-র সমান বা কম, বা গত ৩০ দিনের বিক্রির হারে ৭ দিনের মধ্যে শেষ হয়ে যাবে। প্রস্তাবিত পরিমাণ = ১৫ দিনের বিক্রির হিসাব − বর্তমান স্টক (আনুমানিক)। কোম্পানিতে চাপলে সেই কোম্পানির তালিকা খুলবে — সেখান থেকে লিখে বা শেয়ার করে অর্ডার দিতে পারবেন।</div>' +
     (g.map((x,i)=>`<div class="row-item" onclick="showOrderCompany(${i})" style="cursor:pointer;"><div style="min-width:0;overflow-wrap:anywhere;"><div class="row-title">${escapeHtml(x.company)}</div></div><div class="row-right"><span class="badge badge-red">${x.items.length}টা</span></div></div>`).join('') || '<div class="empty-state">কোনো ওষুধের স্টক কম নেই ✓</div>');
   openModal('detailModalBackdrop');
 }
 function _orderText(i){
   const x = _orderGroups[i]; if(!x) return '';
   return 'শ্রী শ্রী নৃসিংহ মেডিকেল হল — অর্ডার তালিকা\n'+x.company+' ('+todayStr()+')\n\n' +
-    x.items.map((it,k)=>(k+1)+'. '+(it.m.name||'')+' — আছে '+(it.m.stock)+(it.p?' (শেষবার '+it.p.qty+'টা কিনেছিলেন)':'')).join('\n');
+    x.items.map((it,k)=>(k+1)+'. '+(it.m.name||'')+' — আছে '+(it.m.stock)+(it.sugg>0?' — অর্ডার ~'+it.sugg+'টা':'')+(it.p?' (শেষবার '+it.p.qty+'টা কিনেছিলেন)':'')).join('\n');
 }
 function showOrderCompany(i){
   const x = _orderGroups[i]; if(!x) return;
   document.getElementById('detailModalTitle').textContent = x.company+' ('+x.items.length+'টা)';
   document.getElementById('detailModalContent').innerHTML =
     `<div style="display:flex;gap:8px;margin-bottom:8px;"><button class="btn btn-outline" style="flex:1;" onclick="showOrderList()">← কোম্পানির তালিকা</button><button class="btn btn-primary" style="flex:1;" onclick="shareOrderText(${i})">📤 শেয়ার / কপি</button></div>` +
-    x.items.map(it=>`<div class="row-item"><div style="min-width:0;overflow-wrap:anywhere;"><div class="row-title">${escapeHtml(it.m.name||'')}</div><div class="row-sub">${it.p?'শেষবার '+it.p.qty+'টা কিনেছিলেন ('+escapeHtml(it.p.date||'')+')':'আগে কেনার রেকর্ড নেই'}</div></div><div class="row-right"><span class="badge ${(Number(it.m.stock)||0)<=0?'badge-red':'badge-gold'}">স্টক ${it.m.stock}</span></div></div>`).join('');
+    x.items.map(it=>`<div class="row-item"><div style="min-width:0;overflow-wrap:anywhere;"><div class="row-title">${escapeHtml(it.m.name||'')}</div><div class="row-sub">${it.sugg>0?'<b>প্রস্তাবিত ~'+it.sugg+'টা</b> • ':''}${it.rate>0?'দিনে গড়ে '+(+it.rate.toFixed(2))+'টা বিক্রি • ':''}${it.p?'শেষবার '+it.p.qty+'টা কিনেছিলেন ('+escapeHtml(it.p.date||'')+')':'আগে কেনার রেকর্ড নেই'}${it.soon?' • <span style="color:#b26a00;">শীঘ্র শেষ হবে</span>':''}</div></div><div class="row-right"><span class="badge ${(Number(it.m.stock)||0)<=0?'badge-red':'badge-gold'}">স্টক ${it.m.stock}</span></div></div>`).join('');
   openModal('detailModalBackdrop');
 }
 async function shareOrderText(i){

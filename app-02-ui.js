@@ -425,11 +425,9 @@ function renderDashboard(){
     }
   }catch(e){ console.error('negative-stock banner failed', e); }
 
-  const soon = medicines.filter(m=>m.expiry).map(m=>({...m, days:(new Date(m.expiry)-new Date())/86400000})).filter(m=>m.days<60).sort((a,b)=>a.days-b.days);
+  const soon = expiryAlerts();
   const expiryEl = document.getElementById('expiryList');
-  expiryEl.innerHTML = soon.length ? soon.slice(0,5).map(m=>`
-    <div class="row-item" onclick="goToMedicine('${m.id}')" style="cursor:pointer;"><div><div class="row-title">${escapeHtml(m.name||'')}</div><div class="row-sub">ব্যাচ: ${m.batch||'—'}</div></div>
-    <span class="badge ${m.days<0?'badge-red':'badge-gold'}">${m.days<0?'মেয়াদ শেষ':Math.ceil(m.days)+' দিন বাকি'}</span></div>`).join('') : `<div class="empty-state">কোনো সতর্কতা নেই ✓</div>`;
+  expiryEl.innerHTML = soon.length ? soon.slice(0,5).map(a=>expiryRowHtml(a,false)).join('') : `<div class="empty-state">কোনো সতর্কতা নেই ✓</div>`;
   const expiryShowAllBtn = document.getElementById('expiryShowAllBtn');
   if(expiryShowAllBtn) expiryShowAllBtn.style.display = soon.length>5 ? 'block' : 'none';
 
