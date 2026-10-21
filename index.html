@@ -228,6 +228,8 @@
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openScanModal()">📷 ইনভয়েসের ছবি থেকে যোগ করুন</button>
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="toggleMedSelectMode()" id="medSelectToggleBtn">নির্বাচন করে মুছুন</button>
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openCompanyFixer()">🏢 কোম্পানির নাম ঠিক করুন / মিলিয়ে দিন</button>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openGenericFiller()">🧬 জেনেরিক নাম একসাথে ভরুন</button>
+      <button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="openGenericImport()">📥 প্রস্তাবিত জেনেরিক বসান (যাচাই করে)</button>
       <div id="medSelectBar" style="display:none;margin-top:8px;">
         <button class="btn btn-danger btn-block" onclick="deleteSelectedMedicines()" id="medDeleteSelectedBtn">নির্বাচিতগুলো মুছুন (০)</button>
       </div>
@@ -1045,7 +1047,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js", "app-17-generic-data.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

@@ -595,7 +595,22 @@ function deleteSelectedMedicines(){
 }
 function renderMedicines(){
   const q = (document.getElementById('medSearch')?.value||'').toLowerCase();
-  const list = q.trim() ? rankMeds(medicines, q, false) : sortMedicinesGrouped(medicines);
+  const _sameGen = new Set();
+  let list = q.trim() ? rankMeds(medicines, q, false) : sortMedicinesGrouped(medicines);
+  // জেনেরিক নাম লিখেও খোঁজা যায় (যেমন "paracetamol" লিখলে সব ব্র্যান্ড) — নামের মিলগুলো আগে, জেনেরিকের মিলগুলো তার পরে
+  if(q.trim()){
+    const _qq = q.trim(), _have = new Set(list.map(m=>m.id));
+    list = list.concat(medicines.filter(m=>!_have.has(m.id) && String(m.generic||'').toLowerCase().includes(_qq)));
+    // ব্র্যান্ডের নাম লিখলেও: প্রথম ৩টা মেলা ওষুধের জেনেরিক ধরে একই জেনেরিকের অন্য কোম্পানির ওষুধ নিচে যোগ হয় ("একই জেনেরিক" দেখায়)
+    const _keys = new Set(); list.slice(0,3).forEach(m=>{ const k = _genKey(m.generic); if(k) _keys.add(k); });
+    if(_keys.size){
+      const _have2 = new Set(list.map(m=>m.id));
+      const _extra = medicines.filter(m=>!_have2.has(m.id) && _keys.has(_genKey(m.generic)));
+      _extra.forEach(m=>_sameGen.add(m.id));
+      list = list.concat(_extra);
+    }
+  }
+  const _showGen = !!q.trim();
   const totalItemsEl = document.getElementById('medTotalItems');
   const totalValueEl = document.getElementById('medTotalValue');
   if(totalItemsEl){
@@ -616,7 +631,7 @@ function renderMedicines(){
   } else {
     el.innerHTML = list.length ? list.map(m=>`
       <div class="row-item" onclick="openMedModal('${m.id}')" style="cursor:pointer;">
-        <div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)} ${m.isAntibiotic?'<span class="badge badge-red" style="margin-left:4px;">এন্টিবায়োটিক</span>':''}</div><div class="row-sub">${m.company||'—'} ${m.batch?'• ব্যাচ:'+m.batch:''}</div></div>
+        <div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)} ${m.isAntibiotic?'<span class="badge badge-red" style="margin-left:4px;">এন্টিবায়োটিক</span>':''}</div><div class="row-sub">${m.company||'—'} ${m.batch?'• ব্যাচ:'+m.batch:''}${(_showGen && m.generic)?' • জেনেরিক: '+escapeHtml(m.generic):''}${_sameGen.has(m.id)?' • <b style="color:#1e7e4f;">একই জেনেরিক</b>':''}</div></div>
         <div class="row-right"><div class="row-title">${fmt(m.sell)}</div>
         <span class="badge ${m.stock<=m.lowLimit?'badge-red':'badge-green'}">স্টক: ${m.stock}</span></div>
       </div>`).join('') : `<div class="empty-state">কোনো ওষুধ পাওয়া যায়নি — উপরে থেকে যোগ করুন</div>`;

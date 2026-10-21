@@ -741,6 +741,97 @@ function _coEditDialog(oldName, after){
     if(typeof after==='function') after();
   };
 }
+// ===== জেনেরিক নাম একসাথে ভরার ট্যাব =====
+// জেনেরিক ঘর ফাঁকা ওষুধগুলোর তালিকা; প্রতিটার পাশে নাম লিখে ঘর থেকে বেরোলেই সেই ওষুধে সংরক্ষণ হয় (আলাদা "সেভ" বোতাম নেই, তাই মাঝপথে বন্ধ করলেও যা ভরেছেন থাকে)।
+// আগে লেখা জেনেরিকের নাম লিখতে গেলে নিজে থেকে সাজেশনে আসে — একই নাম বারবার আলাদা বানানে লেখার ভুল কমে।
+function openGenericFiller(){
+  const ov = _supOverlay(`
+    <div style="font-weight:800;font-size:17px;">🧬 জেনেরিক নাম ভরুন</div>
+    <div class="row-sub" style="margin:4px 0 8px;">যে ওষুধের জেনেরিক ঘর ফাঁকা, সেগুলো এখানে। পাশের ঘরে নাম লিখে বাইরে চাপলেই সংরক্ষণ হয়। আগে লেখা নাম সাজেশনে আসবে — একই বানানে লিখুন। না জানলে ফাঁকা রেখে পরেরটায় যান।</div>
+    <div id="gfCount" class="row-sub" style="font-weight:700;margin-bottom:6px;"></div>
+    <input type="text" id="gfSearch" placeholder="ওষুধ বা কোম্পানি খুঁজুন..." autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:10px;font-size:15px;">
+    <div style="margin:8px 0;"><label style="font-size:13px;"><input type="checkbox" id="gfAll"> যেগুলোতে আগে থেকে জেনেরিক আছে সেগুলোও দেখান</label></div>
+    <datalist id="gfGenList"></datalist>
+    <div id="gfList"></div>
+    <button id="gfMore" class="btn btn-outline btn-block" style="margin-top:8px;display:none;">আরও দেখান</button>
+    <button id="gfClose" class="btn btn-block" style="margin-top:10px;background:#f1f1f1;">বন্ধ করুন</button>`);
+  let shown = 40;
+  const $ = s=>ov.querySelector(s);
+  const gensList = ()=>{ const set = new Map(); medicines.forEach(m=>{ const g = String(m.generic||'').trim().replace(/\s+/g,' '); if(g && !set.has(g.toLowerCase())) set.set(g.toLowerCase(), g); }); return [...set.values()].sort((a,b)=>a.localeCompare(b)); };
+  const refreshGens = ()=>{ $('#gfGenList').innerHTML = gensList().map(g=>`<option value="${escapeHtml(g)}">`).join(''); };
+  const counts = ()=>{ const done = medicines.filter(m=>String(m.generic||'').trim()).length; $('#gfCount').textContent = 'জেনেরিক ভরা: '+done+' / '+medicines.length+'টা ওষুধ'; };
+  const commit = (id, val, rowEl)=>{
+    const m = medicines.find(x=>x.id===id); if(!m) return;
+    const v = String(val||'').trim().replace(/\s+/g,' ');
+    if(v === String(m.generic||'').trim()) return;
+    m.generic = v;
+    save(DB_KEYS.med, medicines);
+    if(cloudReady()){ try{ shopColl('medicines').doc(m.id).set({generic:v},{merge:true}).catch(e=>console.error(e)); }catch(e){} }
+    if(rowEl){ const t = rowEl.querySelector('.gfTick'); if(t) t.textContent = v ? '✓' : ''; }
+    counts(); refreshGens();
+  };
+  const render = ()=>{
+    const q = $('#gfSearch').value.trim().toLowerCase(), all = $('#gfAll').checked;
+    const list = medicines.filter(m=>(all || !String(m.generic||'').trim()) && (!q || (m.name||'').toLowerCase().includes(q) || (m.company||'').toLowerCase().includes(q)))
+      .sort((a,b)=>String(a.company||'').localeCompare(String(b.company||'')) || String(a.name||'').localeCompare(String(b.name||'')));
+    const part = list.slice(0, shown);
+    $('#gfList').innerHTML = part.map(m=>`
+      <div class="gfRow" data-id="${m.id}" style="padding:8px 0;border-bottom:1px dashed #ddd;">
+        <div style="overflow-wrap:anywhere;"><span style="font-weight:600;">${escapeHtml((typePrefixPlain(m.type)||'')+(m.name||''))}</span> <span class="row-sub">• ${escapeHtml(m.company||'—')}</span></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;"><input type="text" list="gfGenList" value="${escapeHtml(m.generic||'')}" placeholder="জেনেরিক নাম (যেমন Paracetamol)" autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:9px;border:1px solid #ccc;border-radius:10px;font-size:15px;"><span class="gfTick" style="color:#1e7e4f;font-weight:800;width:16px;">${String(m.generic||'').trim()?'✓':''}</span></div>
+      </div>`).join('') || '<div class="empty-state">'+(all||q ? 'কিছু পাওয়া যায়নি' : 'সব ওষুধে জেনেরিক ভরা আছে ✓')+'</div>';
+    $('#gfMore').style.display = list.length>shown ? 'block' : 'none';
+    $('#gfMore').textContent = 'আরও দেখান ('+(list.length-shown)+'টা বাকি)';
+    ov.querySelectorAll('.gfRow').forEach(row=>{ const inp = row.querySelector('input'); inp.onchange = ()=>commit(row.dataset.id, inp.value, row); });
+  };
+  $('#gfSearch').oninput = ()=>{ shown = 40; render(); };
+  $('#gfAll').onchange = ()=>{ shown = 40; render(); };
+  $('#gfMore').onclick = ()=>{ shown += 40; render(); };
+  $('#gfClose').onclick = ()=>{ ov.remove(); try{ renderMedicines(); }catch(e){} };
+  refreshGens(); counts(); render();
+}
+// ===== প্রস্তাবিত জেনেরিক বসান (যাচাই করে) =====
+// app-17-generic-data.js-এর প্রস্তাব থেকে, যে ওষুধের জেনেরিক এখনো ফাঁকা সেগুলোর তালিকা। প্রতিটা দেখে বদলানো বা টিক তুলে বাদ দেওয়া যায়; "বসান" চাপলে শুধু টিক দেওয়াগুলো সেভ হয়।
+// "অনুমান" চিহ্নিতগুলো আগে থেকে টিক দেওয়া থাকে না। আগে থেকে ভরা জেনেরিক কখনো বদলায় না।
+function openGenericImport(){
+  if(typeof GENERIC_SUGGESTIONS==='undefined'){ toast('প্রস্তাবের তালিকা পাওয়া যায়নি'); return; }
+  const rows = GENERIC_SUGGESTIONS.map(r=>({ r, m: medicines.find(x=>x.id===r[0]) }))
+    .filter(o=>o.m && String(o.m.name||'')===o.r[1] && !String(o.m.generic||'').trim())
+    .sort((a,b)=>a.r[2].localeCompare(b.r[2]) || a.r[1].localeCompare(b.r[1]));
+  const ov = _supOverlay(`
+    <div style="font-weight:800;font-size:17px;">📥 প্রস্তাবিত জেনেরিক বসান</div>
+    <div class="row-sub" style="margin:4px 0 8px;">${rows.length}টা ওষুধের জন্য জেনেরিক নাম প্রস্তাব করা হয়েছে (জেনেরিক ফাঁকা ছিল যেগুলোর)। প্রতিটা দেখুন — ভুল হলে ঘরে নাম বদলান, বা টিক তুলে বাদ দিন। <b>"অনুমান"</b> লেখাগুলো টিক ছাড়া আছে, যাচাই করে টিক দিন। বসানোর পর এই ঘর বাদে আর কিছু বদলাবে না।</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;"><button id="giAll" class="btn btn-outline" style="flex:1;">সব টিক</button><button id="giNone" class="btn btn-outline" style="flex:1;">সব টিক তুলুন</button></div>
+    <div id="giList"></div>
+    <button id="giSave" class="btn btn-primary btn-block" style="margin-top:10px;"></button>
+    <button id="giClose" class="btn btn-block" style="margin-top:8px;background:#f1f1f1;">বন্ধ করুন</button>`);
+  const $ = s=>ov.querySelector(s);
+  $('#giList').innerHTML = rows.map((o,i)=>`
+    <div style="padding:7px 0;border-bottom:1px dashed #ddd;">
+      <label style="display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" class="giCk" data-i="${i}" ${o.r[3]==='S'?'checked':''} style="margin-top:4px;flex-shrink:0;">
+      <span style="min-width:0;overflow-wrap:anywhere;"><span style="font-weight:600;">${escapeHtml((typePrefixPlain(o.m.type)||'')+(o.m.name||''))}</span> <span class="row-sub">• ${escapeHtml(o.m.company||'—')}</span>${o.r[3]==='G'?' <span class="badge badge-gold">অনুমান</span>':''}</span></label>
+      <input type="text" class="giVal" data-i="${i}" value="${escapeHtml(o.r[2])}" style="width:100%;box-sizing:border-box;margin:4px 0 0 26px;max-width:calc(100% - 26px);padding:8px;border:1px solid #ccc;border-radius:10px;font-size:15px;">
+    </div>`).join('') || '<div class="empty-state">প্রস্তাব দেওয়া সব ওষুধে জেনেরিক আগেই ভরা আছে ✓</div>';
+  const cks = ()=>[...ov.querySelectorAll('.giCk')];
+  const upd = ()=>{ const n = cks().filter(c=>c.checked).length; const b = $('#giSave'); b.textContent = '✔ টিক দেওয়া '+n+'টা বসান'; b.disabled = n===0; };
+  ov.addEventListener('change', e=>{ if(e.target.classList && e.target.classList.contains('giCk')) upd(); });
+  $('#giAll').onclick = ()=>{ cks().forEach(c=>c.checked=true); upd(); };
+  $('#giNone').onclick = ()=>{ cks().forEach(c=>c.checked=false); upd(); };
+  $('#giClose').onclick = ()=>{ ov.remove(); try{ renderMedicines(); }catch(e){} };
+  $('#giSave').onclick = function(){
+    const picks = cks().filter(c=>c.checked).map(c=>{ const i = +c.dataset.i; const v = String(ov.querySelector('.giVal[data-i="'+i+'"]').value||'').trim().replace(/\s+/g,' '); return { m: rows[i].m, v }; }).filter(x=>x.v);
+    if(!picks.length){ toast('কিছু টিক দেওয়া নেই'); return; }
+    if(!confirm(picks.length+'টা ওষুধে জেনেরিক নাম বসবে। ঠিক আছে?')) return;
+    this.disabled = true;
+    let n = 0;
+    picks.forEach(x=>{ if(!String(x.m.generic||'').trim()){ x.m.generic = x.v; n++; } });   // ইতিমধ্যে ভরা হলে (অন্য ফোনে) ছুঁই না
+    save(DB_KEYS.med, medicines);
+    if(cloudReady()) picks.forEach(x=>{ try{ shopColl('medicines').doc(x.m.id).set({generic:x.m.generic},{merge:true}).catch(e=>console.error(e)); }catch(e){} });
+    ov.remove(); toast(n+'টা ওষুধে জেনেরিক বসানো হয়েছে ✓');
+    try{ renderMedicines(); }catch(e){}
+  };
+  upd();
+}
 let purchaseShowCount = 30;
 function renderPurchases(){
   const el = document.getElementById('purchaseList');
