@@ -87,9 +87,15 @@ function pickPMedicine(id, name){
   // under the field makes clear this is last time's price, in case this invoice's rate changed.
   const med = medicines.find(m=>m.id===id);
   const priceEl = document.getElementById('pPrice'), hintEl = document.getElementById('pPrevBuyHint');
-  if(med && med.buy>0){
-    priceEl.value = med.buy;
-    hintEl.textContent = 'আগের ক্রয়মূল্য ৳'+med.buy+' — পরিবর্তন হয়ে থাকলে এডিট করে দিন';
+  const mem = _lastPurchaseMemory(med);
+  _memRate = mem ? mem.rate : 0; _memTpUnit = mem ? mem.tpU : 0;
+  if(mem){
+    priceEl.value = _r4(mem.rate);
+    hintEl.textContent = 'আগের হার ৳'+_r4(mem.rate)+'/একক (ভ্যাট-ডিসকাউন্ট সহ, বোনাস ছাড়া)'+(mem.tpU>0 ? ' • TP ৳'+_r4(mem.tpU) : '')+' — পরিবর্তন হয়ে থাকলে এডিট করে দিন';
+    hintEl.style.display = 'block';
+  } else if(med && med.buy>0){
+    priceEl.value = _r4(med.buy);
+    hintEl.textContent = 'আগের ক্রয়মূল্য ৳'+_r4(med.buy)+' — পরিবর্তন হয়ে থাকলে এডিট করে দিন';
     hintEl.style.display = 'block';
   } else {
     priceEl.value = '';
@@ -201,7 +207,7 @@ function _autoFillLineBoxes(paid, fct, qty, sellRef){
     if(ph!==undefined) el.placeholder = ph;
   };
   set('pLineTotal', paid>0 ? +paid.toFixed(2) : '');
-  const tpVal = (paid>0 && fct!==1) ? +((paid+_lineSpecial())/fct).toFixed(2) : '';
+  const tpVal = (paid>0 && fct!==1) ? +((paid+_lineSpecial())/fct).toFixed(2) : ((_memTpUnit>0 && qty>0) ? +(_memTpUnit*qty).toFixed(2) : '');
   const est = (sellRef>0 && qty>0) ? ('অনুমান ≈ '+ +(sellRef*MRP_TP_RATIO*qty).toFixed(0)) : 'যেমন: 374.82';
   set('pLineTP', tpVal, tpVal===''? est : 'যেমন: 374.82');
 }
@@ -233,6 +239,32 @@ function clearInvAdj(){
   _invAdjSummary(); purchaseRecalc('qty');
 }
 function _r4(x){ return Math.round(x*10000)/10000; }
+// ===== ওষুধের "মনে রাখা হার" =====
+// আগে অ্যাপ শুধু একটা সংখ্যা মনে রাখত — বোনাসসহ ভাগ করা গড় খরচ (med.buy)। তাই বোনাস সহ একবার কিনলে পরের বার হার বদলে যেত,
+// আর "শুধু TP" কখনোই মনে থাকত না। এখন প্রতিটা ক্রয়ের সাথে সংরক্ষিত হয়: bonus (বোনাস কত), paid (যে সংখ্যক ওষুধের দাম দিয়েছেন তার মোট টাকা,
+// ভ্যাট-ডিসকাউন্ট সহ), tpU (একটার TP, যদি আপনি TP দিয়ে থাকেন)। পরের বার ওষুধ বাছলেই একক হার = paid ÷ (কেনা, বোনাস ছাড়া) বসে,
+// আর পরিমাণ যা-ই দিন (১ বক্স, ২ বক্স, ১০ বক্স) মোট টাকা ও TP নিজে গুণ হয়ে আসে — বোনাস দিলেও হার একই থাকে, শুধু লাভের % বদলায়।
+let _memRate = 0, _memTpUnit = 0;   // বর্তমান ফর্মের মনে-রাখা সঠিক (গোল না করা) হার ও একক-TP
+function _rateVal(){
+  const r = parseFloat(document.getElementById('pPrice').value)||0;
+  // ঘরে দেখানো সংখ্যা ৪ দশমিকে গোল; আপনি না বদলালে আসল সঠিক হারটাই ধরি — নইলে মোট টাকা কয়েক পয়সা সরে যায়
+  if(_memRate>0 && Math.abs(r-_r4(_memRate))<1e-9) return _memRate;
+  return r;
+}
+function _lastPurchaseMemory(med){
+  if(!med) return null;
+  let last = null;
+  for(const x of purchases){
+    if(x.medicineId!==med.id || x.isReturn || !(x.qty>0) || !(x.price>0)) continue;
+    if(!last || (x.ts||0) > (last.ts||0)) last = x;
+  }
+  if(!last) return null;
+  const bonus = last.bonus||0, qp = last.qty - bonus;
+  if(!(last.paid>0) || !(qp>0)) return null;
+  // ওষুধের ক্রয়মূল্য অন্য কোথাও (ওষুধ এডিটে) হাতে বদলানো হয়ে থাকলে সেই নতুন দামই আসল — পুরনো মনে-রাখা হার নয়
+  if(med.buy>0 && Math.abs(last.price - med.buy) > 0.001) return null;
+  return { rate: last.paid/qp, tpU: last.tpU||0 };
+}
 function purchaseRecalc(src){
   const g = id=>document.getElementById(id);
   const med = medicines.find(m=>m.id===g('pMedicine').value);
@@ -245,6 +277,8 @@ function purchaseRecalc(src){
     else { pctEl.dataset.auto='0'; _lastDiscPct = pctEl.value; }
   }
   if(src==='price'||src==='tp'||src==='total'){ pctEl.dataset.auto='1'; }
+  if(src==='price'||src==='total'||src==='pct'){ _memRate = 0; _memTpUnit = 0; }   // হার নিজে বদলালে পুরনো মনে-রাখা TP আর খাটে না
+  if(src==='tp'){ _memTpUnit = 0; }
   const pctAuto = pctEl.dataset.auto!=='0';
   const pct = pctAuto ? 0 : (parseFloat(pctEl.value)||0);
   const sellRef = (parseFloat(g('pSell').value)||0) || (med ? (med.sell||0) : 0);
@@ -259,7 +293,7 @@ function purchaseRecalc(src){
   const tot = _lineTotalEff();
   if((src==='tp'||src==='total'||src==='qty'||src==='bonus') && tot>0 && qty>0) g('pPrice').value = _r4(tot/qty);
   if((src==='pct'||src==='sell') && !pctAuto && sellRef>0 && pct>0 && pct<100) g('pPrice').value = _r4(sellRef*(1-pct/100));
-  const rate = parseFloat(g('pPrice').value)||0;
+  const rate = _rateVal();
   const paid = tot > 0 ? tot : qty*rate;
   const tpTyped = _typedVal('pLineTP'), finTyped = _typedVal('pLineTotal'), fct = _invFactor();
   const parts = [];
@@ -326,8 +360,14 @@ function openPurchaseModal(id, back){
   renderPurchaseSelects();
   const p = id ? purchases.find(x=>x.id===id) : null;
   if(!p) document.getElementById('pMedicine').value = '';   // নতুন এন্ট্রি: আগের এন্ট্রির ওষুধ নয়
-  document.getElementById('pQty').value = p ? p.qty : 1;
-  document.getElementById('pBonus').value = '0';
+  // সম্পাদনায় আগে বোনাস হারিয়ে যেত (কেনা+বোনাস মিলে একটা সংখ্যা দেখাত, বোনাস ঘর ০) — এখন নতুন ক্রয়ে বোনাস/মোট টাকা সংরক্ষিত, তাই ঠিকঠাক ফেরত আসে
+  const _pBonus = (p && p.bonus>0 && p.paid>0 && (p.qty-p.bonus)>0) ? p.bonus : 0;
+  const _pPaid = (p && p.paid>0 && (p.qty-_pBonus)>0) ? p.paid : 0;
+  _memRate = 0; _memTpUnit = 0;
+  if(p && _pPaid>0){ _memRate = _pPaid/(p.qty-_pBonus); _memTpUnit = p.tpU||0; }
+  else if(p){ _memRate = p.price; }
+  document.getElementById('pQty').value = p ? (p.qty-_pBonus) : 1;
+  document.getElementById('pBonus').value = String(_pBonus);
   document.getElementById('pLineTotal').value = ''; document.getElementById('pLineTotal').dataset.auto = '0';
   document.getElementById('pLineTP').value = ''; document.getElementById('pLineTP').dataset.auto = '0';
   document.getElementById('pDiscPct').value = p ? '' : _lastDiscPct;
@@ -339,7 +379,7 @@ function openPurchaseModal(id, back){
   document.getElementById('pCalcHint').style.display = 'none';
   document.getElementById('pSell').value = '';
   document.getElementById('pEstHint').style.display = 'none'; _estTp = 0; _estFinal = 0;
-  document.getElementById('pPrice').value = p ? p.price : '';
+  document.getElementById('pPrice').value = p ? _r4(_memRate||p.price) : '';
   document.getElementById('pPrevBuyHint').style.display = 'none';
   document.getElementById('pBatch').value = p ? (p.batch||'') : '';
   document.getElementById('pExpiry').value = p ? (p.expiry||'') : '';
@@ -436,7 +476,7 @@ async function savePurchase(){
     const qtyPaid = parseInt(document.getElementById('pQty').value)||0;
     const bonusQty = parseInt(document.getElementById('pBonus').value)||0;
     const lineTotal = _lineTotalEff();
-    const rate = parseFloat(document.getElementById('pPrice').value)||med.buy;
+    const rate = _rateVal()||med.buy;
     if(qtyPaid<=0){ _savePurchaseCore(0); return; }
     const qty = qtyPaid + bonusQty;
     const price = (bonusQty>0 || lineTotal>0) ? ((lineTotal>0 ? lineTotal : qtyPaid*rate) / qty) : rate;
@@ -474,12 +514,16 @@ function _savePurchaseCore(newSell){
   const qtyPaid = parseInt(document.getElementById('pQty').value)||0;
   const bonusQty = parseInt(document.getElementById('pBonus').value)||0;
   const lineTotal = _lineTotalEff();
-  const rate = parseFloat(document.getElementById('pPrice').value)||med.buy;
+  const rate = _rateVal()||med.buy;
   if(qtyPaid<=0){ toast('সঠিক পরিমাণ দিন'); return; }
   // বোনাস থাকলে স্টকে (কেনা+বোনাস) যোগ হয়, আর একক খরচ = মোট দেওয়া টাকা ÷ (কেনা+বোনাস) — তাই
   // মোট ক্রয় (qty × price) সবসময় আসল দেওয়া টাকার সমান থাকে।
   const qty = qtyPaid + bonusQty;
   const price = (bonusQty>0 || lineTotal>0) ? ((lineTotal>0 ? lineTotal : qtyPaid*rate) / qty) : rate;
+  // মনে রাখার জন্য: কেনা সংখ্যার মোট টাকা (বোনাস বাদে ভাগ হওয়ার আগে) ও একক-TP
+  const paidTotal = +((lineTotal>0 ? lineTotal : qtyPaid*rate)).toFixed(4);
+  const _tpT = _typedVal('pLineTP');
+  const tpU = _tpT>0 ? +(_tpT/qtyPaid).toFixed(6) : (_memTpUnit>0 ? +_memTpUnit.toFixed(6) : 0);
   // দাম যাচাই (লোকসান/কম লাভ/০ দাম) আগেই savePurchase()-এ হয়ে গেছে; newSell থাকলে নতুন বিক্রয়মূল্য বসবে।
   if(newSell>0){
     med.sell = newSell;
@@ -500,11 +544,11 @@ function _savePurchaseCore(newSell){
     const oldMed = medicines.find(m=>m.id===old.medicineId);
     if(oldMed) oldMed.stock -= old.qty;
     med.stock += qty; med.buy = price; med.batch = batch; med.expiry = expiry;
-    Object.assign(old, { medicineId:med.id, medicineName:med.name, qty, price, batch, expiry, supplierId:supId||null, supplierName:sup?sup.name:(med.company||null), credit });
+    Object.assign(old, { medicineId:med.id, medicineName:med.name, qty, price, bonus:bonusQty, paid:paidTotal, tpU, batch, expiry, supplierId:supId||null, supplierName:sup?sup.name:(med.company||null), credit });
   } else {
     med.stock += qty; med.buy = price; med.batch = batch; med.expiry = expiry;
     newPurchaseId = uid();
-    purchases.push({ id:newPurchaseId, ts:Date.now(), date:todayStr(), medicineId:med.id, medicineName:med.name, qty, price, batch, expiry, supplierId:supId||null, supplierName:sup?sup.name:(med.company||null), credit });
+    purchases.push({ id:newPurchaseId, ts:Date.now(), date:todayStr(), medicineId:med.id, medicineName:med.name, qty, price, bonus:bonusQty, paid:paidTotal, tpU, batch, expiry, supplierId:supId||null, supplierName:sup?sup.name:(med.company||null), credit });
   }
   save(DB_KEYS.med, medicines);
   save(DB_KEYS.purchase, purchases);
@@ -520,7 +564,7 @@ function _savePurchaseCore(newSell){
         if(_editOldMedId) shopColl('medicines').doc(_editOldMedId).set({stock: _FV.increment(-_editOldQty)}, {merge:true}).catch(e=>console.error(e));
         shopColl('medicines').doc(med.id).set(Object.assign({stock: _FV.increment(qty)}, _meta), {merge:true}).catch(e=>console.error(e));
       }
-      shopColl('purchases').doc(editingPurchaseId).update({ medicineId:med.id, medicineName:med.name, qty, price, batch, expiry, supplierId:supId||null, supplierName:sup?sup.name:(med.company||null), credit }).catch(e=>console.error(e));
+      shopColl('purchases').doc(editingPurchaseId).update({ medicineId:med.id, medicineName:med.name, qty, price, bonus:bonusQty, paid:paidTotal, tpU, batch, expiry, supplierId:supId||null, supplierName:sup?sup.name:(med.company||null), credit }).catch(e=>console.error(e));
     } else {
       shopColl('medicines').doc(med.id).set({stock: firebase.firestore.FieldValue.increment(qty), buy: price, batch, expiry}, {merge:true}).catch(e=>console.error(e));
       const p = purchases.find(x=>x.id===newPurchaseId);
