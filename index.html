@@ -251,6 +251,7 @@
     <!-- PURCHASE -->
     <section id="sec-purchase">
       <button class="btn btn-primary btn-block" onclick="openPurchaseModal()">+ নতুন ক্রয় এন্ট্রি</button>
+      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="invaiOpen()">📷 ইনভয়েসের ছবি থেকে</button>
       <h3 class="section-h"><span class="dot"></span>ক্রয়ের ইতিহাস</h3>
       <button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="returnOpenPurchaseReturn()">↩ কোম্পানিকে ফেরত দিন</button>
       <div class="search-wrap" style="margin-bottom:8px;"><input type="text" id="purchaseSearch" placeholder="ওষুধ, কোম্পানি বা তারিখ (যেমন ০৫/১০) দিয়ে খুঁজুন..." oninput="purchaseShowCount=30;renderPurchases()" autocomplete="off"></div>
@@ -649,6 +650,7 @@ Fexo 120mg
       <button type="button" class="btn btn-sm btn-outline" onclick="clearInvAdj()">✕ নতুন ইনভয়েস — সমন্বয় মুছুন</button>
     </details>
     <div class="row-sub" id="pCalcHint" style="display:none;margin-top:4px;font-weight:600;color:var(--primary-dark,#0a5c36);"></div>
+    <div class="row-sub" id="pTpChangeHint" style="display:none;margin-top:6px;padding:8px 10px;border-radius:10px;background:#fff7e6;color:#8a4b00;line-height:1.6;"></div>
     <div style="margin-top:8px;"><label>বিক্রয়মূল্য (৳ প্রতি ইউনিট)</label><input type="number" id="pSell" min="0" step="any" placeholder="জানা না থাকলে নিচের অনুমান থেকে বসান" oninput="purchaseRecalc('sell')"></div>
     <div class="row-sub" id="pEstHint" style="display:none;margin-top:4px;"></div>
     <div class="field-row">
@@ -1054,7 +1056,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js", "app-17-generic-data.js", "app-18-drug-classes.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js", "app-17-generic-data.js", "app-18-drug-classes.js", "app-19-invoice-ai.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

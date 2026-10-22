@@ -906,6 +906,9 @@ async function cloudLogout(){
 }
 // ===== ব্যাকআপ পাঠানোর রিমাইন্ডার: ১ দিনের বেশি নিজের Drive/WhatsApp-এ ব্যাকআপ না পাঠালে মনে করায় =====
 const BACKUP_REMIND_DAYS = 1;
+// "ব্যাকআপ পাঠানোর সময় হয়েছে" পপআপ: v74-এ বন্ধ করা হয়েছিল, v75-এ মালিকের অনুরোধে আগের অবস্থায় (চালু, ১ দিনের সীমা) ফেরানো হলো।
+// এটা দিনের অটো-পাঠানো ব্যর্থ হলে সতর্ক করার ব্যবস্থা। আবার বন্ধ করতে নিচের true-কে false করুন।
+const BACKUP_REMINDER_ON = true;
 function _markBackupShared(){
   try{ localStorage.setItem('ssn_last_manual_backup_ts', String(Date.now())); localStorage.removeItem('ssn_backup_snooze_date'); }catch(e){}
   const b = document.getElementById('backupRemindBar'); if(b) b.remove();
@@ -920,6 +923,7 @@ function refreshDriveBackupInfo(){
 }
 function checkBackupReminder(){
   try{
+    if(!BACKUP_REMINDER_ON){ const _b = document.getElementById('backupRemindBar'); if(_b) _b.remove(); return; }
     if(typeof currentRole==='function' && currentRole()!=='owner') return;
     if(!medicines.length && !sales.length && !customers.length) return;
     if(document.getElementById('backupRemindBar')) return;

@@ -329,6 +329,38 @@ function _lastPurchaseMemory(med){
   if(med.buy>0 && Math.abs(last.price - med.buy) > 0.001) return null;
   return { rate: last.paid/qp, tpU: last.tpU||0 };
 }
+// ===== TP বদলের সতর্কতা (v73) =====
+// কোম্পানি TP বদলালে প্রায়ই MRP-ও বদলায়, কিন্তু ইনভয়েসে MRP ছাপা থাকে না। তাই এই ওষুধের আগের ক্রয়ের একক-TP (tpU) এর সাথে এবারের
+// একক-TP মিলিয়ে ফারাক TP_CHANGE_PCT% বা বেশি হলে ফর্মে সতর্কবার্তা আসে — প্যাকেটের MRP দেখে বিক্রয়মূল্য মিলিয়ে নেওয়ার জন্য।
+// শুধু "শুধু TP" ঘরে লেখা TP-র সাথে তুলনা হয় (ভ্যাট-ছাড় সহ দাম ইনভয়েসভেদে এমনিতেই ওঠানামা করে, তাই সেটা দিয়ে নয়)।
+// এটা ইঙ্গিত মাত্র: TP না বদলেও MRP বদলাতে পারে। কিছুই সেভ বা বদল করে না। সীমা বদলাতে শুধু নিচের সংখ্যা।
+const TP_CHANGE_PCT = 3;
+function _prevTpUnit(med){
+  if(!med) return 0;
+  let cutoff = Infinity;
+  if(editingPurchaseId){ const old = purchases.find(x=>x.id===editingPurchaseId); if(old) cutoff = old.ts||Infinity; }   // সম্পাদনায় শুধু তার আগের ক্রয়ের সাথে তুলনা
+  let last = null;
+  for(const x of purchases){
+    if(x.medicineId!==med.id || x.isReturn || x.id===editingPurchaseId || !(x.tpU>0) || !((x.ts||0) < cutoff)) continue;
+    if(!last || (x.ts||0) > (last.ts||0)) last = x;
+  }
+  return last ? last.tpU : 0;
+}
+function tpChangeInfo(prev, cur){
+  if(!(prev>0) || !(cur>0)) return null;
+  const pct = (cur-prev)/prev*100;
+  return { pct: pct, changed: Math.abs(pct) >= TP_CHANGE_PCT - 1e-9 }   // দশমিক গোলের ক্ষুদ্র ভুলে ঠিক ৩% ফসকে না যায়;
+}
+function _tpChangeHtml(med, qty, tpTyped){
+  if(!med || !(qty>0) || !(tpTyped>0)) return '';
+  const cur = tpTyped/qty, prev = _prevTpUnit(med);
+  const f = x => x<10 ? +x.toFixed(3) : +x.toFixed(2);
+  if(!(prev>0)) return '<span style="opacity:.8;">ℹ এই ওষুধের আগের TP অ্যাপে জানা নেই, তাই তুলনা করা গেল না — প্যাকেটে MRP দেখে বিক্রয়মূল্য মিলিয়ে নিন।</span>';
+  const r = tpChangeInfo(prev, cur);
+  if(!r || !r.changed) return '';
+  const sign = r.pct>0 ? '+' : '−';
+  return '⚠ <b>TP বদলেছে:</b> আগে ৳'+f(prev)+', এবার ৳'+f(cur)+' ('+sign+(+Math.abs(r.pct).toFixed(1))+'%) — MRP-ও বদলে থাকতে পারে। প্যাকেটের ছাপা MRP দেখে নিচের বিক্রয়মূল্য মিলিয়ে নিন'+((med.sell>0)?' (এখন ৳'+med.sell+')':'')+'।';
+}
 function purchaseRecalc(src){
   const g = id=>document.getElementById(id);
   const med = medicines.find(m=>m.id===g('pMedicine').value);
@@ -415,6 +447,7 @@ function purchaseRecalc(src){
     if(html && med.sell>0) html += `<div style="margin-top:4px;">বর্তমান বিক্রয়মূল্য: ৳${med.sell}</div>`;
   }
   eh.innerHTML = html; eh.style.display = html ? 'block' : 'none';
+  try{ const th = g('pTpChangeHint'); if(th){ const t = _tpChangeHtml(med, qty, tpTyped); th.innerHTML = t; th.style.display = t ? 'block' : 'none'; } }catch(e){ console.error(e); }
   _autoFillLineBoxes(paid, fct, qty, sellRef);
 }
 function openPurchaseModal(id, back){
@@ -443,6 +476,7 @@ function openPurchaseModal(id, back){
   document.getElementById('pCalcHint').style.display = 'none';
   document.getElementById('pSell').value = '';
   document.getElementById('pEstHint').style.display = 'none'; _estTp = 0; _estFinal = 0;
+  { const _th = document.getElementById('pTpChangeHint'); if(_th){ _th.style.display = 'none'; _th.innerHTML = ''; } }
   document.getElementById('pPrice').value = p ? _r4(_memRate||p.price) : '';
   document.getElementById('pPrevBuyHint').style.display = 'none';
   document.getElementById('pBatch').value = p ? (p.batch||'') : '';
