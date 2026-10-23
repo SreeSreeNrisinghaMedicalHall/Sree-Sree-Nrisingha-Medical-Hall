@@ -217,3 +217,21 @@
     .receipt .r-total-row{border-top:2px solid #000;}
     .receipt .r-head .r-sub{font-size:12.5px;}
   }
+
+/* v80: প্রধান সার্চ ঘর বড় ও রঙিন + লাল মুছুন বাটন */
+.search-wrap.search-main::before{content:"🔍";position:absolute;left:15px;top:50%;transform:translateY(-50%);font-size:21px;pointer-events:none;z-index:1;}
+.search-wrap.search-main input,.search-main-input{
+  font-size:17.5px;font-weight:600;padding:16px 16px;min-height:56px;border-radius:16px;
+  border:2.5px solid var(--gold);
+  background:linear-gradient(135deg,#FFFBEA 0%,#FFF3C4 100%);
+  box-shadow:0 3px 12px rgba(201,162,39,.28);
+}
+.search-wrap.search-main input{padding-left:50px;}
+.search-wrap.search-main input::placeholder,.search-main-input::placeholder{color:#8a7a3a;font-weight:500;}
+.search-wrap.search-main input:focus,.search-main-input:focus{
+  outline:none;border-color:var(--primary);background:#fff;box-shadow:0 0 0 4px rgba(27,77,62,.18),0 3px 12px rgba(27,77,62,.2);
+}
+.pos-search-row .btn{min-width:56px;min-height:56px;font-size:22px;border-radius:16px;border:2.5px solid var(--gold);background:var(--gold-soft);}
+.btn-del-main{background:var(--red);color:#fff;border:none;font-weight:700;font-size:15.5px;box-shadow:0 2px 8px rgba(184,67,58,.35);}
+.btn-del-main:active{filter:brightness(.92);}
+.btn-del-main.is-cancel{background:transparent;color:var(--red);border:2px solid var(--red);box-shadow:none;}

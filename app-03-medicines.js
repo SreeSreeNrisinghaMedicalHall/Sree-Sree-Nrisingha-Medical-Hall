@@ -584,7 +584,9 @@ let selectedMedIds = new Set();
 function toggleMedSelectMode(){
   medSelectMode = !medSelectMode;
   selectedMedIds.clear();
-  document.getElementById('medSelectToggleBtn').textContent = medSelectMode ? 'বাতিল করুন' : 'নির্বাচন করে মুছুন';
+  const _selBtn = document.getElementById('medSelectToggleBtn');
+  _selBtn.textContent = medSelectMode ? '↩️ বাতিল করুন' : '🗑️ নির্বাচন করে মুছুন';
+  _selBtn.classList.toggle('is-cancel', medSelectMode);
   document.getElementById('medSelectBar').style.display = medSelectMode ? 'block' : 'none';
   renderMedicines();
 }

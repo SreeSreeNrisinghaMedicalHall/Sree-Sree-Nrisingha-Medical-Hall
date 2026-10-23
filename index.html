@@ -100,7 +100,7 @@
       <div id="sellerBadge" onclick="editDeviceSeller()" style="cursor:pointer;margin:0 0 8px;padding:8px 12px;border-radius:12px;background:#eef6f1;border:1px solid #cfe3d6;font-size:13.5px;"></div>
       <div class="card">
         <label>ওষুধ খুঁজুন <span class="tag-en">Search medicine</span></label>
-        <div style="display:flex;gap:8px;"><input type="text" id="posSearch" placeholder="নাম লিখুন বা বারকোড স্ক্যান করুন..." oninput="renderPosSearch()" onkeydown="posSearchKey(event)" style="flex:1;min-width:0;"><button type="button" class="btn btn-outline" onclick="posScanClick()" title="ক্যামেরায় বারকোড স্ক্যান">📷</button></div>
+        <div class="pos-search-row" style="display:flex;gap:8px;"><input type="text" id="posSearch" class="search-main-input" placeholder="নাম লিখুন বা বারকোড স্ক্যান করুন..." oninput="renderPosSearch()" onkeydown="posSearchKey(event)" style="flex:1;min-width:0;"><button type="button" class="btn btn-outline" onclick="posScanClick()" title="ক্যামেরায় বারকোড স্ক্যান">📷</button></div>
         <div id="posSearchResults"></div>
       </div>
 
@@ -226,7 +226,7 @@
         <button class="btn btn-gold" onclick="openBulkModal()">☰ একসাথে অনেকগুলো</button>
       </div>
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openScanModal()">📷 ইনভয়েসের ছবি থেকে যোগ করুন</button>
-      <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="toggleMedSelectMode()" id="medSelectToggleBtn">নির্বাচন করে মুছুন</button>
+      <button class="btn btn-block btn-del-main" style="margin-top:8px;" onclick="toggleMedSelectMode()" id="medSelectToggleBtn">🗑️ নির্বাচন করে মুছুন</button>
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openCompanyFixer()">🏢 কোম্পানির নাম ঠিক করুন / মিলিয়ে দিন</button>
       <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="openGenericFiller()">🧬 জেনেরিক নাম একসাথে ভরুন</button>
       <button class="btn btn-gold btn-block" style="margin-top:8px;" onclick="openGenericImport()">📥 প্রস্তাবিত জেনেরিক বসান (যাচাই করে)</button>
@@ -238,7 +238,7 @@
         <div class="stat accent"><div class="label">মোট আইটেম</div><div class="value" id="medTotalItems">০</div></div>
         <div class="stat blue"><div class="label">মোট ক্রয়মূল্য (স্টক)</div><div class="value" id="medTotalValue">৳০</div></div>
       </div>
-      <div class="search-wrap" style="margin-top:12px;">
+      <div class="search-wrap search-main" style="margin-top:12px;">
         <input type="text" id="medSearch" placeholder="ওষুধ, জেনেরিক বা গ্রুপ খুঁজুন..." oninput="renderMedicines()">
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
