@@ -76,7 +76,7 @@ function expiryAlerts(limitDays){
   return out.sort((a,b)=>a.days-b.days);
 }
 function expiryRowHtml(a, closeFirst){
-  return `<div class="row-item" onclick="${closeFirst?"closeModal('detailModalBackdrop');":''}goToMedicine('${a.m.id}')" style="cursor:pointer;"><div><div class="row-title">${escapeHtml(a.m.name||'')}</div><div class="row-sub">ব্যাচ: ${escapeHtml(a.batch||'—')} • ${a.qty}টা (আনুমানিক) • মেয়াদ ${escapeHtml(a.expiry)}</div></div>
+  return `<div class="row-item" onclick="${closeFirst?"closeModal('detailModalBackdrop');":''}goToMedicine('${a.m.id}')" style="cursor:pointer;"><div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconBox(a.m.type)}<div><div class="row-title">${escapeHtml(a.m.name||'')}</div><div class="row-sub">ব্যাচ: ${escapeHtml(a.batch||'—')} • ${a.qty}টা (আনুমানিক) • মেয়াদ ${escapeHtml(a.expiry)}</div></div></div>
     <span class="badge ${a.days<0?'badge-red':'badge-gold'}">${a.days<0?'মেয়াদ শেষ':Math.ceil(a.days)+' দিন বাকি'}</span></div>`;
 }
 function medLotsHtml(med){
@@ -176,7 +176,7 @@ function renderPMedicineSearch(){
   const q = document.getElementById('pMedicineSearch').value.toLowerCase().trim();
   const resEl = document.getElementById('pMedicineResults');
   const matches = _recentFirst(rankMeds(medicines, q, true), _justAdded('med')).slice(0,40);
-  resEl.innerHTML = matches.length ? matches.map(m=>`<div class="row-item" onclick="pickPMedicine('${m.id}','${(typePrefixPlain(m.type)+m.name).replace(/'/g,"\\'")}')" style="cursor:pointer;padding:9px 10px;"><div class="row-title" style="font-size:13.5px;">${medTypeTag(m.type)}${escapeHtml(m.name||'')}</div><div class="row-sub">${m.type?'ধরন: '+m.type+' • ':''}${m.company||'—'} • স্টক: ${m.stock}</div></div>`).join('') : `<div class="row-item" onclick="addMedicineFromPurchase()" style="cursor:pointer;padding:9px 10px;"><div class="row-title" style="font-size:13.5px;color:var(--primary);">+ ওষুধটি ওষুধ ইনভেন্টরিতে যোগ করুন</div></div>`;
+  resEl.innerHTML = matches.length ? matches.map(m=>`<div class="row-item" onclick="pickPMedicine('${m.id}','${(typePrefixPlain(m.type)+m.name).replace(/'/g,"\\'")}')" style="cursor:pointer;padding:9px 10px;"><div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconBox(m.type)}<div><div class="row-title" style="font-size:13.5px;">${medTypeTag(m.type)}${escapeHtml(m.name||'')}</div><div class="row-sub">${m.type?'ধরন: '+m.type+' • ':''}${m.company||'—'} • স্টক: ${m.stock}</div></div></div></div>`).join('') : `<div class="row-item" onclick="addMedicineFromPurchase()" style="cursor:pointer;padding:9px 10px;"><div class="row-title" style="font-size:13.5px;color:var(--primary);">+ ওষুধটি ওষুধ ইনভেন্টরিতে যোগ করুন</div></div>`;
   resEl.style.display = 'block';
 }
 function addMedicineFromPurchase(){
@@ -1004,7 +1004,7 @@ function renderPurchases(){
       sep = `<div class="row-sub" style="margin:10px 0 2px;padding:5px 8px;background:#f1f5f2;border-radius:8px;font-weight:700;">${p.date===todayStr()?'আজ — ':''}${p.date} • ${dayItems.length}টা • ${fmt(daySum)}</div>`;
     }
     return sep + `
-    <div class="row-item" onclick="openPurchaseModal('${p.id}')" style="cursor:pointer;"><div><div class="row-title">${p.isReturn?'↩ ফেরত • ':''}${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'}${p.batch?' • ব্যাচ: '+p.batch:''}${p.expiry?' • মেয়াদ: '+p.expiry:''}</div></div>
+    <div class="row-item" onclick="openPurchaseModal('${p.id}')" style="cursor:pointer;"><div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconById(p.medicineId)}<div><div class="row-title">${p.isReturn?'↩ ফেরত • ':''}${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'}${p.batch?' • ব্যাচ: '+p.batch:''}${p.expiry?' • মেয়াদ: '+p.expiry:''}</div></div></div>
     <div class="row-right"><div class="row-title">${fmt(p.qty*p.price)}</div><div class="row-sub">${p.qty} × ${fmt(p.price)}</div></div></div>`;
   }).join('');
   const more = filteredAll.length > list.length

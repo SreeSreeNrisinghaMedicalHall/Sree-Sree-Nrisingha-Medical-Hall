@@ -334,7 +334,7 @@ function showReportPurchases(){
   const pInRange = repPurchases().filter(p=>inRange(p.date, range)).sort((a,b)=>b.ts-a.ts);
   const rows = pInRange.map(p=>`
     <div class="row-item" onclick="openPurchaseFrom('${p.id}','showReportPurchases')" style="cursor:pointer;">
-      <div><div class="row-title">${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'} • ${p.date}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconById(p.medicineId)}<div><div class="row-title">${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'} • ${p.date}</div></div></div>
       <div class="row-right"><div class="row-title">${fmt(p.qty*p.price)}</div><div class="row-sub">${p.qty} × ${fmt(p.price)}</div></div>
     </div>`).join('');
   document.getElementById('detailModalTitle').textContent = 'মোট ক্রয় (' + pInRange.length + 'টা)';
@@ -459,7 +459,7 @@ function showOrderCompany(i){
   document.getElementById('detailModalTitle').textContent = x.company+' ('+x.items.length+'টা)';
   document.getElementById('detailModalContent').innerHTML =
     `<div style="display:flex;gap:8px;margin-bottom:8px;"><button class="btn btn-outline" style="flex:1;" onclick="showOrderList()">← কোম্পানির তালিকা</button><button class="btn btn-primary" style="flex:1;" onclick="shareOrderText(${i})">📤 শেয়ার / কপি</button></div>` +
-    x.items.map(it=>`<div class="row-item"><div style="min-width:0;overflow-wrap:anywhere;"><div class="row-title">${escapeHtml(it.m.name||'')}</div><div class="row-sub">${(typeof medDrugClass==='function' && medDrugClass(it.m))?'<span style="color:#1B4D3E;">'+escapeHtml(medDrugClass(it.m))+'</span> • ':''}${it.sugg>0?'<b>প্রস্তাবিত ~'+it.sugg+'টা</b> • ':''}${it.rate>0?'দিনে গড়ে '+(+it.rate.toFixed(2))+'টা বিক্রি • ':''}${it.p?'শেষবার '+it.p.qty+'টা কিনেছিলেন ('+escapeHtml(it.p.date||'')+')':'আগে কেনার রেকর্ড নেই'}${it.soon?' • <span style="color:#b26a00;">শীঘ্র শেষ হবে</span>':''}</div></div><div class="row-right"><span class="badge ${(Number(it.m.stock)||0)<=0?'badge-red':'badge-gold'}">স্টক ${it.m.stock}</span></div></div>`).join('');
+    x.items.map(it=>`<div class="row-item"><div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconBox(it.m.type)}<div style="min-width:0;overflow-wrap:anywhere;"><div class="row-title">${escapeHtml(it.m.name||'')}</div><div class="row-sub">${(typeof medDrugClass==='function' && medDrugClass(it.m))?'<span style="color:#1B4D3E;">'+escapeHtml(medDrugClass(it.m))+'</span> • ':''}${it.sugg>0?'<b>প্রস্তাবিত ~'+it.sugg+'টা</b> • ':''}${it.rate>0?'দিনে গড়ে '+(+it.rate.toFixed(2))+'টা বিক্রি • ':''}${it.p?'শেষবার '+it.p.qty+'টা কিনেছিলেন ('+escapeHtml(it.p.date||'')+')':'আগে কেনার রেকর্ড নেই'}${it.soon?' • <span style="color:#b26a00;">শীঘ্র শেষ হবে</span>':''}</div></div></div><div class="row-right"><span class="badge ${(Number(it.m.stock)||0)<=0?'badge-red':'badge-gold'}">স্টক ${it.m.stock}</span></div></div>`).join('');
   openModal('detailModalBackdrop');
 }
 async function shareOrderText(i){

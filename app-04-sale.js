@@ -53,11 +53,11 @@ function renderPosSearch(){
   if(results.length){
     el.innerHTML = results.map(m=> m.stock>0 ? `
       <div class="row-item" onclick="addToCart('${m.id}')" style="cursor:pointer;">
-        <div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)}</div><div class="row-sub">স্টক: ${m.stock}</div></div>
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconBox(m.type)}<div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)}</div><div class="row-sub">স্টক: ${m.stock}</div></div></div>
         <div class="row-title">${fmt(m.sell)}</div>
       </div>` : `
       <div class="row-item" onclick="togglePosBuy('${m.id}')" style="cursor:pointer;opacity:.85;flex-wrap:wrap;">
-        <div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)}</div><div class="row-sub"><span class="badge badge-red">স্টক শূন্য</span></div></div>
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconBox(m.type)}<div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)}</div><div class="row-sub"><span class="badge badge-red">স্টক শূন্য</span></div></div></div>
         <div class="row-title">${fmt(m.sell)}</div>
         <div id="posBuy_${m.id}" style="display:none;width:100%;margin-top:8px;">
           <button class="btn btn-primary btn-block" onclick="event.stopPropagation();buyFromPos('${m.id}')">📦 ওষুধ ক্রয় করুন</button>
@@ -159,7 +159,7 @@ function renderCart(){
   const el = document.getElementById('cartList');
   el.innerHTML = cart.length ? cart.map((c,i)=>`
     <div class="cart-item">
-      <div><div class="row-title" style="font-size:13.5px;">${i+1}. ${c.name} ${c.isAntibiotic?'<span class="badge badge-red" style="margin-left:4px;">এন্টিবায়োটিক</span>':''}</div><div class="row-sub">${fmt(c.price)} × ${c.qty}</div></div>
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;">${medIconById(c.id)}<div><div class="row-title" style="font-size:13.5px;">${i+1}. ${c.name} ${c.isAntibiotic?'<span class="badge badge-red" style="margin-left:4px;">এন্টিবায়োটিক</span>':''}</div><div class="row-sub">${fmt(c.price)} × ${c.qty}</div></div></div>
       <div class="qty-controls">
         <button class="qty-btn" onclick="changeQty('${c.id}',-1)">−</button>
         <span style="min-width:18px;text-align:center;font-weight:700;">${c.qty}</span>
@@ -630,7 +630,7 @@ function showTodayPurchases(){
   const todayP = purchases.filter(p=>p.date===t).sort((a,b)=>b.ts-a.ts);
   const rows = todayP.map(p=>`
     <div class="row-item" onclick="openPurchaseFrom('${p.id}','showTodayPurchases')" style="cursor:pointer;">
-      <div><div class="row-title">${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconById(p.medicineId)}<div><div class="row-title">${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.supplierName||_medCompanyOf(p.medicineId)||'সাপ্লায়ার নেই'}</div></div></div>
       <div class="row-right"><div class="row-title">${fmt(p.qty*p.price)}</div><div class="row-sub">${p.qty} × ${fmt(p.price)}</div></div>
     </div>`).join('');
   document.getElementById('detailModalTitle').textContent = 'আজকের ক্রয় (' + todayP.length + 'টা)';
@@ -680,7 +680,7 @@ function showLowStockCompanyDetail(idx){
   if(!g) return;
   const rows = g.items.map(m=>`
     <div class="row-item" onclick="closeModal('detailModalBackdrop');goToMedicine('${m.id}')" style="cursor:pointer;">
-      <div class="row-title">${escapeHtml(m.name||'')}</div><span class="badge badge-red">স্টক: ${m.stock}</span>
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconBox(m.type)}<div class="row-title">${escapeHtml(m.name||'')}</div></div><span class="badge badge-red">স্টক: ${m.stock}</span>
     </div>`).join('');
   document.getElementById('detailModalTitle').innerHTML = `<span onclick="showAllLowStock()" style="cursor:pointer;margin-right:6px;">←</span>${g.company} (${g.items.length}টা)`;
   document.getElementById('detailModalContent').innerHTML = rows;

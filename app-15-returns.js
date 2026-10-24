@@ -44,8 +44,8 @@ function returnOpenForSale(saleId){
   const rem = returnRemaining(sale);
   const cust = sale.customerId ? customers.find(c=>c.id===sale.customerId) : null;
   const rows = (sale.items||[]).map((it,i)=>{
-    if(rem[i]<=1e-9) return `<div class="row-item"><div><div class="row-title">${escapeHtml(it.name||'')}</div><div class="row-sub">বিক্রি ${it.qty} — সবটাই আগে ফেরত নেওয়া হয়েছে</div></div></div>`;
-    return `<div class="row-item"><div style="flex:1;min-width:0;"><div class="row-title">${escapeHtml(it.name||'')}</div><div class="row-sub">বিক্রি ${it.qty} • ফেরত নেওয়া যাবে সর্বোচ্চ ${rem[i]}</div></div>
+    if(rem[i]<=1e-9) return `<div class="row-item"><div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconById(it.id)}<div><div class="row-title">${escapeHtml(it.name||'')}</div><div class="row-sub">বিক্রি ${it.qty} — সবটাই আগে ফেরত নেওয়া হয়েছে</div></div></div></div>`;
+    return `<div class="row-item"><div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;">${medIconById(it.id)}<div style="min-width:0;"><div class="row-title">${escapeHtml(it.name||'')}</div><div class="row-sub">বিক্রি ${it.qty} • ফেরত নেওয়া যাবে সর্বোচ্চ ${rem[i]}</div></div></div>
       <div style="width:90px;"><input type="number" id="rq_${i}" min="0" max="${rem[i]}" step="any" placeholder="0" data-max="${rem[i]}" oninput="returnCalc()"></div></div>`;
   }).join('');
   const dueDefault = !!(cust && (cust.due||0) > 0);

@@ -127,6 +127,9 @@ function medTypeTag(type){
 // so anywhere a medicine name is shown on its own — dropdown suggestion, picked-value textbox,
 // purchase history row — needs this prefix or the two are indistinguishable.
 function typePrefixPlain(type){ const p = rxTypePrefix(type); return p ? p+' ' : ''; }
+// v89: ওষুধ ট্যাবের মতো ধরনের ছবি (ট্যাবলেট/ক্যাপসুল/সাপোজিটরি/বোতল...) — বিক্রয়, ক্রয়, প্রেসক্রিপশনের সার্চ তালিকায়ও
+function medIconBox(type){ return '<span style="flex:0 0 30px;width:30px;text-align:center;font-size:24px;line-height:1;">'+((typeof _medTypeIcon==='function')?_medTypeIcon(type):'')+'</span>'; }
+function medIconById(medId){ const m = medicines.find(x=>x.id===medId); return medIconBox(m ? m.type : ''); }
 function medTypeTagFor(medId){ const m = medicines.find(x=>x.id===medId); return m ? medTypeTag(m.type) : ''; }
 // daily quantity needed in the medicine's SELL unit (bottle/tube/pack for container types, piece/ampoule otherwise)
 function dailyUnitsForRxItem(med, dosage, qtyText){
@@ -320,7 +323,7 @@ function onRxMedInput(idx, value){
   const q = value.trim().toLowerCase();
   if(!q){ el.style.display='none'; el.innerHTML=''; return; }
   const matches = rankMeds(medicines, q, false).slice(0,12);
-  el.innerHTML = matches.length ? matches.map(m=>`<div class="row-item" style="cursor:pointer;padding:8px 10px;" onclick="pickRxMed(${idx},'${m.id}')"><div class="row-title" style="font-size:13px;">${medTypeTag(m.type)}${escapeHtml(stripRedundantTypeSuffix(m.name, m.type))}</div><div class="row-sub">স্টক: ${m.stock} • ${fmt(m.sell)}</div></div>`).join('') : '';
+  el.innerHTML = matches.length ? matches.map(m=>`<div class="row-item" style="cursor:pointer;padding:8px 10px;" onclick="pickRxMed(${idx},'${m.id}')"><div style="display:flex;align-items:center;gap:10px;min-width:0;">${medIconBox(m.type)}<div><div class="row-title" style="font-size:13px;">${medTypeTag(m.type)}${escapeHtml(stripRedundantTypeSuffix(m.name, m.type))}</div><div class="row-sub">স্টক: ${m.stock} • ${fmt(m.sell)}</div></div></div></div>`).join('') : '';
   el.style.display = matches.length ? 'block' : 'none';
 }
 function pickRxMed(idx, medId){
