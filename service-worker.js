@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nrisingha-medical-v82';
+const CACHE_NAME = 'nrisingha-medical-v85';
 const ASSETS = [
   './',
   './index.html',
@@ -23,6 +23,7 @@ const ASSETS = [
   './app-17-generic-data.js',
   './app-18-drug-classes.js',
   './app-19-invoice-ai.js',
+  './app-20-generic-info.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',

@@ -94,21 +94,35 @@ function renderCompanyPurchaseReport(){
   }
   el.innerHTML = rowsHtml + toggleHtml;
 }
+// কোম্পানির ভেতরে ঢুকলে ডিফল্টে শুধু নির্বাচিত সময়কালের (যেমন "আজ") ক্রয় দেখায় — আগে সর্বকালের সব দেখাত,
+// তাই বাইরে ১৮টা আর ভেতরে ১৮০টা মনে হতো। "সব সময়ের দেখুন" চাপলে আগের মতো সবগুলো আসে।
+let _cpdAll = false, _cpdCompany = null, _cpdLimit = 100;
+function cpdToggle(all){ _cpdAll = !!all; _cpdLimit = 100; showCompanyPurchaseDetail(_cpdCompany); }
+function cpdMore(){ _cpdLimit += 100; showCompanyPurchaseDetail(_cpdCompany); }
 function showCompanyPurchaseDetail(company){
+  if(company !== _cpdCompany){ _cpdCompany = company; _cpdAll = false; _cpdLimit = 100; }
   const range = document.getElementById('reportRange')?.value || 'month';
   const list = repPurchases().filter(p=>purchaseCompanyName(p)===company).sort((a,b)=>b.ts-a.ts);
-  const rangeTotal = list.filter(p=>inRange(p.date, range)).reduce((a,p)=>a+p.qty*p.price,0);
+  const inR = list.filter(p=>inRange(p.date, range));
+  const rangeTotal = inR.reduce((a,p)=>a+p.qty*p.price,0);
   const allTotal = list.reduce((a,p)=>a+p.qty*p.price,0);
-  const rows = list.map(p=>`
+  const base = _cpdAll ? list : inR;
+  const shown = base.slice(0, _cpdLimit);
+  const rows = shown.map(p=>`
     <div class="row-item" onclick="openPurchaseFrom('${p.id}','showCompanyPurchaseDetail','${String(company).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" style="cursor:pointer;">
       <div><div class="row-title">${medTypeTagFor(p.medicineId)}${escapeHtml(p.medicineName||'')}</div><div class="row-sub">${p.date}</div></div>
       <div class="row-right"><div class="row-title">${fmt(p.qty*p.price)}</div><div class="row-sub">${p.qty} × ${fmt(p.price)}</div></div>
     </div>`).join('');
-  document.getElementById('detailModalTitle').textContent = company + ' (' + list.length + 'টা)';
+  const more = base.length > shown.length ? `<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="cpdMore()">আরও দেখুন (আরও ${base.length-shown.length}টা) ▼</button>` : '';
+  const showAllBtn = (range==='all' || list.length===inR.length) ? '' :
+    (_cpdAll
+      ? `<button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="cpdToggle(false)">▲ শুধু ${rangeLabel(range)} দেখান (${inR.length}টা)</button>`
+      : `<button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="cpdToggle(true)">সব সময়ের ক্রয় দেখুন (${list.length}টা) ▼</button>`);
+  document.getElementById('detailModalTitle').textContent = company + ' (' + (_cpdAll ? list.length+'টা, সব সময়' : rangeLabel(range)+' '+inR.length+'টা') + ')';
   document.getElementById('detailModalContent').innerHTML =
-    `<div class="row-item" style="border-bottom:none;padding-bottom:2px;"><div class="row-title">${rangeLabel(range)}</div><div class="row-title">${fmt(rangeTotal)}</div></div>`+
-    `<div class="row-item" style="border-bottom:1.5px solid #ddd;padding-bottom:12px;margin-bottom:6px;"><div class="row-title">সর্বমোট</div><div class="row-title">${fmt(allTotal)}</div></div>`+
-    (rows || `<div class="empty-state">কোনো ক্রয় নেই</div>`);
+    `<div class="row-item" style="border-bottom:none;padding-bottom:2px;"><div class="row-title">${rangeLabel(range)} (${inR.length}টা)</div><div class="row-title">${fmt(rangeTotal)}</div></div>`+
+    `<div class="row-item" style="border-bottom:1.5px solid #ddd;padding-bottom:12px;margin-bottom:6px;"><div class="row-title">সর্বমোট (${list.length}টা)</div><div class="row-title">${fmt(allTotal)}</div></div>`+
+    showAllBtn + (rows || `<div class="empty-state">এই সময়কালে কোনো ক্রয় নেই</div>`) + more;
   openModal('detailModalBackdrop');
 }
 function renderReports(){

@@ -525,11 +525,12 @@
       <div class="row-sub" style="margin-top:2px;">প্যাকের ভেতরে থাকা ট্যাবলেট/ক্যাপসুলের মোট সংখ্যা লিখুন (এটা ওষুধভেদে ভিন্ন হয় — কোনোটায় ১০টা, কোনোটায় ২০টা, কোনোটায় ৩০টা থাকে)। প্রেসক্রিপশনে যে ডোজ লেখা হবে সেই অনুযায়ী বিক্রির সময় এই সংখ্যা দিয়ে হিসাব করে ক'টা কৌটা লাগবে বের হবে।</div>
     </div>
     <div class="field-row">
-      <div><label>জেনেরিক নাম</label><input type="text" id="mGeneric" oninput="checkAutoAntibiotic();suggestMedClassHint()"></div>
+      <div><label>জেনেরিক নাম</label><input type="text" id="mGeneric" oninput="checkAutoAntibiotic();suggestMedClassHint();refreshMedDesc()"></div>
       <div><label>কোম্পানি</label><input type="text" id="mCompany"></div>
     </div>
     <div><label>গ্রুপ (ড্রাগ ক্লাস — মেডেক্সের মতো)</label><input type="text" id="mDrugClass" list="mClassList" autocomplete="off" placeholder="যেমন: Proton Pump Inhibitors (PPI)"><datalist id="mClassList"></datalist>
       <div id="mClassHint" class="row-sub" style="display:none;margin-top:2px;"></div></div>
+    <div id="mDescInfo"></div>
     <div class="field-row">
       <div><label>ক্রয় মূল্য (৳) *</label><input type="number" id="mBuy" min="0"></div>
       <div><label>বিক্রয় মূল্য (৳) *</label><input type="number" id="mSell" min="0"></div>
@@ -1056,7 +1057,7 @@ Fexo 120mg
 <div class="toast" id="toast"></div>
 
 <script src="app-00-bigstore.js" charset="utf-8"></script>
-<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js", "app-17-generic-data.js", "app-18-drug-classes.js", "app-19-invoice-ai.js"]</script>
+<script id="app-file-list" type="application/json">["app-01-data.js", "app-02-ui.js", "app-03-medicines.js", "app-04-sale.js", "app-05-purchase.js", "app-06-people.js", "app-07-lab.js", "app-08-rx.js", "app-09-reports.js", "app-10-backup-cloud.js", "app-11-lock-init.js", "app-12-delta.js", "app-13-histwindow.js", "app-14-drive.js", "app-15-returns.js", "app-16-doctors.js", "app-17-generic-data.js", "app-18-drug-classes.js", "app-19-invoice-ai.js", "app-20-generic-info.js"]</script>
 <script>
 /* অ্যাপের ফাইলগুলো ক্রমানুসারে লোড হয় — তবে বিক্রি/ক্রয়ের তথ্য ফোনের বড় সংরক্ষণ থেকে নেওয়া শেষ হওয়ার পরে */
 (function(){

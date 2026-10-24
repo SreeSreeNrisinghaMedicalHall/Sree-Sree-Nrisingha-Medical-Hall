@@ -93,13 +93,14 @@ function openMedModal(id, prefillName){
   { const _dc = document.getElementById('mDrugClass'); if(_dc) _dc.value = m ? (m.drugClass||'') : '';
     const _dl = document.getElementById('mClassList'); if(_dl && typeof DRUG_CLASS_LIST!=='undefined') _dl.innerHTML = DRUG_CLASS_LIST.map(c=>'<option value="'+escapeHtml(c)+'">').join(''); }
   suggestMedClassHint();
+  try{ refreshMedDesc(); }catch(e){}
   document.getElementById('mCompany').value = m ? (m.company||'') : '';
   document.getElementById('mBuy').value = m ? m.buy : '';
   document.getElementById('mSell').value = m ? m.sell : '';
   document.getElementById('mBatch').value = m ? (m.batch||'') : '';
   document.getElementById('mBarcode').value = m ? (m.barcode||'') : '';
   document.getElementById('mExpiry').value = m ? (m.expiry||'') : '';
-  { const _li = document.getElementById('mLotsInfo'); if(_li){ try{ _li.innerHTML = m ? (medLotsHtml(m)+medAltHtml(m)) : ''; }catch(e){ _li.innerHTML=''; } } }
+  { const _li = document.getElementById('mLotsInfo'); if(_li){ try{ _altLimit = 10; _li.innerHTML = m ? (medLotsHtml(m)+medAltHtml(m)) : ''; }catch(e){ _li.innerHTML=''; } } }
   document.getElementById('mStock').value = m ? m.stock : 0;
   document.getElementById('mLowLimit').value = m ? m.lowLimit : 10;
   document.getElementById('mAntibiotic').checked = m ? !!m.isAntibiotic : false;

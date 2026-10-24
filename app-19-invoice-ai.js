@@ -4,7 +4,7 @@
 // সাধারণ ক্রয় ফর্ম খোলে — ওখানে আপনি দেখে "সংরক্ষণ" চাপলে তবেই সেভ। (সব দামের সতর্কতা ওই ফর্মেরই।)
 // Firebase Blaze + সার্ভার সেটআপ (INVOICE-AI-SETUP.txt) না হওয়া পর্যন্ত বন্ধ থাকে — কোনো ছবি যায় না, কোনো খরচ নেই।
 const INVAI_FLAG = 'ssn_invai_on';
-const INVAI_TYPE_MAP = { tab:'ট্যাবলেট', cap:'ক্যাপসুল', syrup:'সিরাপ', susp:'সাসপেনশন', inj:'ইনজেকশন', supp:'সাপোজিটরি', oint:'মলম', cream:'ক্রিম', drop:'ড্রপ', powder:'পাউডার-কৌটা' };
+const INVAI_TYPE_MAP = { tab:'ট্যাবলেট', cap:'ক্যাপসুল', syrup:'সিরাপ', susp:'সাসপেনশন', inj:'ইনজেকশন', supp:'সাপোজিটরি', oint:'মলম', cream:'ক্রিম', drop:'ড্রপ', powder:'পাউডার/কৌটা' };
 let _invaiResult = null, _invaiRows = [], _invaiOpenPick = -1;
 
 function _invaiEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -13,7 +13,28 @@ function _invaiBn(n){ return (n==null||isNaN(n)) ? '—' : String(Math.round(n*1
 // এআই-র নামের সাথে ইনভেন্টরির ওষুধ মেলানো। exact = নাম হুবহু মিলেছে (হাইফেন/ফাঁকা বাদে); না মিললে আংশিক মিলকে "অনুমান" বলে দেখানো হয়
 // মিলানোর জন্য মাত্রার একক (mg, ml, mcg, gm, iu) আর ফাঁকা বাদ — "Camlor 4" আর "Camlor - 4 mg" একই ধরা হয় (শক্তির সংখ্যা আলাদা হলে আলাদাই থাকে)
 function _invaiLoose(s){
-  return normalizeMedName(s||'').replace(/(\d)\s*(mg|mcg|gm|ml|iu|g)\b/g,'$1').replace(/\b(mg|mcg|gm|ml|iu)\b/g,'').replace(/[^a-z0-9\u0980-\u09FF\/.%]/g,'');
+  // নামের শেষের ধরন/পথ-শব্দ (IV, IM, inj, tab...) বাদ — ইনভেন্টরিতে "Eracef - 2 g IV" থাকলেও ইনভয়েসের "Eracef 2g" একই ধরা হয়।
+  // (ধরনটা আলাদা ঘরে আসে ও নিচে আলাদাভাবে মেলানো হয়, তাই এখানে বাদ দিলে ট্যাবলেট/ইনজেকশন গুলিয়ে যায় না)
+  return normalizeMedName(s||'').replace(/(\d)\s*(mg|mcg|gm|ml|iu|g)\b/g,'$1').replace(/\b(mg|mcg|gm|ml|iu)\b/g,'')
+    .replace(/(\s|^)(iv\/im|im\/iv|iv|im|inj|injection|tab|tablet|cap|capsule|syp|syrup|susp|suspension)(?=\s|$)/g,' ')
+    .replace(/[^a-z0-9\u0980-\u09FF\/.%]/g,'');
+}
+// ইনভয়েসের ধরন ইনভেন্টরির ধরনের সাথে মেলে কি না। "পাউডার/কৌটা" ধরনে সেভ করা ওষুধ (Neuro-B, Filwel Gold) ইনভয়েসে tab/cap/powder/drop যা-ই লেখা থাকতে পারে।
+function _invaiTypeOk(want, medType){
+  if(!want) return true;
+  if(medType===want) return true;
+  return medType==='পাউডার/কৌটা';   // কৌটা-ধরনের ওষুধ ইনভয়েসে যে নামেই আসুক মেলে (আগের আচরণ অপরিবর্তিত)
+}
+function _invaiEdit1(a,b){   // দুই শব্দে একটা অক্ষর বেশি/কম/আলাদা হলে true (Ebatin ~ Ebatain)
+  if(a===b) return true; if(Math.abs(a.length-b.length)>1) return false;
+  let i=0; while(i<a.length && i<b.length && a[i]===b[i]) i++;
+  if(a.length===b.length) return a.slice(i+1)===b.slice(i+1);
+  return a.length>b.length ? a.slice(i+1)===b.slice(i) : b.slice(i+1)===a.slice(i);
+}
+function _invaiBrandNum(name){
+  const n = normalizeMedName(name||'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+  const w = n.split(' ');
+  return { brand: w[0]||'', nums: (n.match(/\d+(\.\d+)?/g)||[]).join(',') };
 }
 function invaiMatch(item, meds){
   try{
@@ -24,21 +45,32 @@ function invaiMatch(item, meds){
     const lq = _invaiLoose(item.name);
     const exactList = list.filter(m=>normalizeMedName(m.name)===q || (lq && _invaiLoose(m.name)===lq));
     if(exactList.length){
-      const t = wantType ? exactList.find(m=>m.type===wantType) : null;
+      const t = wantType ? exactList.find(m=>_invaiTypeOk(wantType,m.type)) : null;
       if(t) return { med:t, exact:true };
-      if(exactList.length===1) return { med:exactList[0], exact:true };
-      return { med:exactList[0], exact:false };   // একই নামে একাধিক ধরন — ব্যবহারকারী বেছে নিক
+      // ইনভয়েসে ধরন লেখা থাকলে আর নামের মিল-পাওয়া ওষুধের ধরন তার সাথে না মিললে (ইনভয়েসে ট্যাবলেট, ইনভেন্টরিতে শুধু ইনজেকশন) পাকা মিল নয় — অনুমান
+      if(exactList.length===1 && !wantType) return { med:exactList[0], exact:true };
+      return { med:exactList[0], exact:false };   // ধরন মেলেনি বা একই নামে একাধিক ধরন — ব্যবহারকারী বেছে নিক
+    }
+    // ইনভয়েসের ধরন জানা থাকলে আগে শুধু সেই ধরনের ওষুধের মধ্যে খোঁজা (ট্যাবলেট খুঁজলে ইনজেকশন আসবে না)
+    const pool = wantType ? list.filter(m=>_invaiTypeOk(wantType,m.type)) : list;
+    const poolRank = wantType ? rankMeds(pool, item.name||'', false) : [];
+    if(poolRank.length) return { med:poolRank[0], exact:false };
+    // বানান এক অক্ষর এদিক-ওদিক (Ebatin ~ Ebatain): ব্র্যান্ড প্রায় এক ও শক্তির সংখ্যা এক হলে সেটাই অনুমান
+    if(wantType){
+      const qb = _invaiBrandNum(item.name);
+      const near = pool.filter(m=>{ const mb=_invaiBrandNum(m.name); return qb.brand.length>=4 && _invaiEdit1(qb.brand, mb.brand) && (!qb.nums || qb.nums===mb.nums); });
+      if(near.length) return { med:near[0], exact:false };
     }
     const ranked = rankMeds(list, item.name||'', false);
     if(ranked.length){
-      const t = wantType ? ranked.find(m=>m.type===wantType) : null;
+      const t = wantType ? ranked.find(m=>_invaiTypeOk(wantType,m.type)) : null;
       return { med:t||ranked[0], exact:false };
     }
     // প্রথম শব্দ (ব্র্যান্ড) দিয়ে শেষ চেষ্টা
     const first = (item.name||'').trim().split(/\s+/)[0];
     if(first && first.length>=3){
       const r2 = rankMeds(list, first, false);
-      if(r2.length){ const t = wantType ? r2.find(m=>m.type===wantType) : null; return { med:t||r2[0], exact:false }; }
+      if(r2.length){ const t = wantType ? r2.find(m=>_invaiTypeOk(wantType,m.type)) : null; return { med:t||r2[0], exact:false }; }
     }
   }catch(e){ console.error(e); }
   return { med:null, exact:false };

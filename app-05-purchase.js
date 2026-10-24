@@ -98,13 +98,57 @@ function medAlternatives(med){
   return medicines.filter(m=>m.id!==med.id && _genKey(m.generic)===k)
     .sort((a,b)=>((+b.stock>0)-(+a.stock>0)) || (a.sell||0)-(b.sell||0));
 }
+// ধরন অনুযায়ী ছোট আইকন (মেডেক্সের মতো কার্ডে)
+function _medTypeIcon(t){
+  return ({'ট্যাবলেট':'💊','ক্যাপসুল':'💊','সিরাপ':'🧴','সাসপেনশন':'🧴','ইনজেকশন':'💉','ড্রপ':'💧','মলম':'🧴','ক্রিম':'🧴','সাপোজিটরি':'💊','ইনহেলার':'🌬️','পাউডার/কৌটা':'🥫','শ্যাম্পু':'🧴','এন্টিসেপটিক':'🧴'})[t] || '💊';
+}
+let _altLimit = 10;
+function medAltMore(id){ _altLimit += 20; const m = medicines.find(x=>x.id===id); const li = document.getElementById('mLotsInfo'); if(m && li) li.innerHTML = medLotsHtml(m)+medAltHtml(m); }
+// তালিকার কোনো ওষুধে চাপলে সেটাই খোলে (এই ফর্মে অসংরক্ষিত বদল থাকলে আগে জিজ্ঞেস করে)
+function openMedFromAlt(id){
+  try{
+    const cur = editingMedId ? medicines.find(x=>x.id===editingMedId) : null;
+    if(cur){
+      const g = i=>{ const e=document.getElementById(i); return e ? String(e.value||'') : ''; };
+      const dirty = g('mName')!==String(cur.name||'') || g('mGeneric')!==String(cur.generic||'') || (parseFloat(g('mBuy'))||0)!==(+cur.buy||0) || (parseFloat(g('mSell'))||0)!==(+cur.sell||0) || (parseFloat(g('mStock'))||0)!==(+cur.stock||0);
+      if(dirty && !confirm('এই ওষুধে আপনার করা বদলগুলো এখনো সংরক্ষণ হয়নি। তবুও অন্য ওষুধে যাবেন?')) return;
+    }
+  }catch(e){}
+  openMedModal(id);
+  try{ const box = document.getElementById('medModalBackdrop'); const sc = box && (box.querySelector('.modal')||box); if(sc) sc.scrollTop = 0; }catch(e){}
+}
 function medAltHtml(med){
   if(!_genKey(med.generic)) return '';
   const alts = medAlternatives(med);
   if(!alts.length) return '<div class="row-sub" style="margin:4px 0;">একই জেনেরিকের আর কোনো ওষুধ আপনার তালিকায় নেই।</div>';
-  return `<div style="margin:6px 0;padding:8px;border:1px dashed var(--border,#ccc);border-radius:10px;"><div style="font-weight:700;font-size:13px;">🔁 একই জেনেরিকের অন্য ওষুধ (${alts.length}টা)</div>`
-    + alts.slice(0,12).map(m=>`<div class="row-sub" style="margin:2px 0;">${escapeHtml((typePrefixPlain(m.type)||'')+(m.name||''))} • ${escapeHtml(m.company||'—')} • বিক্রয় ৳${m.sell||0} • <b style="color:${(+m.stock>0)?'#1e7e4f':'#b42318'};">স্টক ${m.stock||0}</b></div>`).join('')
+  const card = m=>{
+    const inStock = +m.stock>0;
+    return `<div onclick="openMedFromAlt('${m.id}')" style="display:flex;align-items:center;gap:10px;padding:10px;margin:6px 0;background:#fff;border:1px solid #e3e8e5;border-radius:12px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.04);">`
+      +`<div style="font-size:26px;line-height:1;flex-shrink:0;width:34px;text-align:center;">${_medTypeIcon(m.type)}</div>`
+      +`<div style="flex:1;min-width:0;overflow-wrap:anywhere;"><div style="font-weight:800;font-size:15px;color:#0f6b5c;">${escapeHtml(m.name||'')}</div>`
+      +`<div style="font-size:12px;color:#555;">${escapeHtml(m.type||'')}</div>`
+      +`<div style="font-size:13px;color:#1b6f8a;">${escapeHtml(m.company||'—')}</div></div>`
+      +`<div style="text-align:right;flex-shrink:0;"><div style="font-weight:800;font-size:15px;">৳${m.sell||0}</div>`
+      +`<div style="margin-top:3px;display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:${inStock?'#e6f4ec':'#fdeceb'};color:${inStock?'#1e7e4f':'#b42318'};">স্টক ${m.stock||0}</div></div>`
+      +`<div style="color:#9aa;font-size:20px;flex-shrink:0;">›</div></div>`;
+  };
+  const shown = alts.slice(0,_altLimit);
+  return `<div style="margin:10px 0;"><div style="font-weight:800;font-size:14px;margin-bottom:2px;">🔁 একই জেনেরিকের অন্য ব্র্যান্ড (${alts.length}টা)</div>`
+    + `<div class="row-sub" style="margin-bottom:4px;">চাপলে সেই ওষুধটা খুলবে। শক্তি (mg) আলাদা হলে বিক্রয়ের আগে নিজে মিলিয়ে নেবেন।</div>`
+    + shown.map(card).join('')
+    + (alts.length>shown.length ? `<button class="btn btn-outline btn-block" style="margin-top:6px;" onclick="medAltMore('${med.id}')">আরও দেখুন (আরও ${alts.length-shown.length}টা) ▼</button>` : '')
     + '</div>';
+}
+// "এটা কিসের জন্য" বক্স — জেনেরিক নাম ধরে (app-20-generic-info.js)। নাম তালিকায় না থাকলে কিছুই দেখায় না।
+function refreshMedDesc(){ const el = document.getElementById('mDescInfo'); const g = document.getElementById('mGeneric'); if(el) el.innerHTML = medDescHtml({generic: g ? g.value : ''}); }
+function medDescHtml(med){
+  try{
+    if(typeof genericInfoFor!=='function') return '';
+    const info = genericInfoFor(med && med.generic);
+    if(!info.length) return '';
+    const body = info.map(x=>`<div style="margin:6px 0;">${info.length>1?`<div style="font-weight:700;font-size:13px;color:#0f6b5c;">${escapeHtml(x.name)}</div>`:''}<div style="font-size:14px;line-height:1.6;">${escapeHtml(x.use)}</div>${x.warn?`<div style="font-size:12.5px;line-height:1.5;color:#a15c00;margin-top:2px;">⚠ ${escapeHtml(x.warn)}</div>`:''}</div>`).join('');
+    return `<div style="margin:10px 0;padding:10px 12px;background:#f1f7f4;border:1px solid #cfe3d8;border-radius:12px;"><div style="font-weight:800;font-size:14px;color:#0f6b5c;">💊 এটা কিসের জন্য</div>${body}<div style="font-size:11.5px;color:#777;margin-top:4px;">সাধারণ তথ্য মাত্র — রোগীকে দেওয়ার আগে ডাক্তারের পরামর্শ ও প্যাকের নির্দেশ দেখুন।</div></div>`;
+  }catch(e){ return ''; }
 }
 let editingPurchaseId = null;
 function renderPurchaseSelects(){
