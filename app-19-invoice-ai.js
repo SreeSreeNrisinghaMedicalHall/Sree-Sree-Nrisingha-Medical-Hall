@@ -11,13 +11,18 @@ function _invaiEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace
 function _invaiBn(n){ return (n==null||isNaN(n)) ? '—' : String(Math.round(n*100)/100); }
 
 // এআই-র নামের সাথে ইনভেন্টরির ওষুধ মেলানো। exact = নাম হুবহু মিলেছে (হাইফেন/ফাঁকা বাদে); না মিললে আংশিক মিলকে "অনুমান" বলে দেখানো হয়
+// মিলানোর জন্য মাত্রার একক (mg, ml, mcg, gm, iu) আর ফাঁকা বাদ — "Camlor 4" আর "Camlor - 4 mg" একই ধরা হয় (শক্তির সংখ্যা আলাদা হলে আলাদাই থাকে)
+function _invaiLoose(s){
+  return normalizeMedName(s||'').replace(/(\d)\s*(mg|mcg|gm|ml|iu|g)\b/g,'$1').replace(/\b(mg|mcg|gm|ml|iu)\b/g,'').replace(/[^a-z0-9\u0980-\u09FF\/.%]/g,'');
+}
 function invaiMatch(item, meds){
   try{
     const q = normalizeMedName(item.name||'');
     if(!q) return { med:null, exact:false };
     const wantType = INVAI_TYPE_MAP[item.type||''] || '';
     const list = meds || medicines;
-    const exactList = list.filter(m=>normalizeMedName(m.name)===q);
+    const lq = _invaiLoose(item.name);
+    const exactList = list.filter(m=>normalizeMedName(m.name)===q || (lq && _invaiLoose(m.name)===lq));
     if(exactList.length){
       const t = wantType ? exactList.find(m=>m.type===wantType) : null;
       if(t) return { med:t, exact:true };
@@ -234,8 +239,9 @@ function invaiRenderReview(){
     const warn = (!it.sure) ? ' <span style="color:#b42318;">⚠ অস্পষ্ট</span>' : '';
     h += '<div class="card" style="margin:6px 0;padding:10px;'+(row.done?'opacity:.55;':'')+'">'
       +'<div style="font-weight:700;">'+_invaiEsc(it.name)+warn+'</div>'
-      +'<div class="row-sub">পরিমাণ '+it.qty+(it.bonus>0?' + বোনাস '+it.bonus:'')+(it.tp!=null?' • TP ৳'+_invaiBn(it.tp):'')+(it.lineTp!=null?' • লাইন TP ৳'+_invaiBn(it.lineTp):'')+(it.lineTotal!=null?' • লাইন মোট ৳'+_invaiBn(it.lineTotal):'')+(it.special>0?' • বিশেষ ছাড় ৳'+_invaiBn(it.special):'')+(it.batch?' • ব্যাচ '+_invaiEsc(it.batch):'')+'</div>'
+      +'<div class="row-sub">পরিমাণ '+it.qty+(it.note?' <span style="opacity:.75;">('+_invaiEsc(it.note)+')</span>':'')+(it.bonus>0?' + বোনাস '+it.bonus:'')+(it.tp!=null?' • TP ৳'+_invaiBn(it.tp):'')+(it.lineTp!=null?' • লাইন TP ৳'+_invaiBn(it.lineTp):'')+(it.lineTotal!=null?' • লাইন মোট ৳'+_invaiBn(it.lineTotal):'')+(it.special>0?' • বিশেষ ছাড় ৳'+_invaiBn(it.special):'')+(it.batch?' • ব্যাচ '+_invaiEsc(it.batch):'')+'</div>'
       +(!(it.qty>0)&&it.bonus>0 ? '<div class="row-sub" style="color:#b45309;">🎁 শুধু বোনাস (বিনামূল্যে '+it.bonus+'টা, পরিমাণ ০) — ক্রয় ফর্মে বসে না; ওষুধের স্টকে হাতে +'+it.bonus+' করুন</div>' : '')
+      +((med && _invaiQtyFor(it,med).pot) ? '<div class="row-sub" style="color:#0a5c36;">🫙 কৌটা ধরনের ওষুধ — ফর্মে <b>'+_invaiQtyFor(it,med).qty+' কৌটা</b>'+(_invaiQtyFor(it,med).bonus>0?' + বোনাস '+_invaiQtyFor(it,med).bonus:'')+' বসবে (পিস নয়)'+(_invaiQtyFor(it,med).warn?' <span style="color:#b45309;">⚠ '+_invaiEsc(_invaiQtyFor(it,med).warn)+'</span>':'')+'</div>' : '')
       +'<div class="row-sub" style="margin-top:4px;">'
       +(med ? ('ইনভেন্টরিতে: <b>'+_invaiEsc(displayMedName(med))+'</b>'+(row.exact?' ✓':' <span style="color:#b45309;">(অনুমান — মিলিয়ে নিন)</span>')) : '<span style="color:#b42318;">ইনভেন্টরিতে মিল পাওয়া যায়নি</span>')
       +'</div>';
@@ -253,7 +259,7 @@ function invaiRenderReview(){
     h += '</div>';
   });
   const _nSeq = _invaiRows.filter(r=>!r.done && r.medId && r.exact && r.it && r.it.qty>0).length;
-  if(_nSeq>=1) h += '<button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="invaiRunAll()">▶ একের পর এক বসান ('+_nSeq+'টা পাকা-মিল লাইন)</button><div class="row-sub" style="margin:4px 0 0;">প্রতিটা ফর্ম আগে থেকে ভরা থাকবে — দেখে \"সংরক্ষণ\" চাপলে পরেরটা নিজে খুলবে। অনুমান/মিল-না-পাওয়া লাইন বাদ থাকবে (ওগুলো ওপর থেকে আলাদা করে করবেন)।</div>';
+  if(_nSeq>=1) h += '<button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="invaiBulkPreview()">✅ সবগুলো একসাথে দেখে সংরক্ষণ ('+_nSeq+'টা পাকা-মিল লাইন)</button><div class="row-sub" style="margin:4px 0 8px;">আগে প্রতিটার হিসাব একটা তালিকায় দেখাবে, তারপর এক চাপে সব সেভ। লোকসান/দাম-নেই লাইন বাদ থাকবে।</div><button class="btn btn-outline btn-block" onclick="invaiRunAll()">▶ একের পর এক বসান ('+_nSeq+'টা পাকা-মিল লাইন)</button><div class="row-sub" style="margin:4px 0 0;">প্রতিটা ফর্ম আগে থেকে ভরা থাকবে — দেখে \"সংরক্ষণ\" চাপলে পরেরটা নিজে খুলবে। অনুমান/মিল-না-পাওয়া লাইন বাদ থাকবে (ওগুলো ওপর থেকে আলাদা করে করবেন)।</div>';
   h += '<button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="invaiReset()">'+(r.paste?'নতুন লিস্ট দিন':'নতুন ছবি দিন')+' (এই তালিকা মুছে যাবে)</button>';
   _invaiBody(h);
   if(_invaiOpenPick>=0) invaiPickSearch(_invaiOpenPick);
@@ -302,23 +308,38 @@ function invaiEnter(i){
     _invaiSeq = false; invaiRenderReview(); openModal('invaiModalBackdrop');
   });
   try{
-    pickPMedicine(med.id, typePrefixPlain(med.type)+med.name);
-    const g = id=>document.getElementById(id);
-    if(_invaiSupId){ const sp = suppliers.find(x=>x.id===_invaiSupId); if(sp) pickPSupplier(sp.id, sp.name); }
-    if(it.qty>0) g('pQty').value = it.qty;
-    g('pBonus').value = String(it.bonus||0);
-    if(it.special>0) g('pLineSpecial').value = it.special;
-    purchaseRecalc('bonus');
-    if(it.lineTp>0){ g('pLineTP').value = it.lineTp; purchaseRecalc('tp'); }
-    else if(it.tp>0 && it.qty>0){ g('pLineTP').value = Math.round(it.tp*it.qty*100)/100; purchaseRecalc('tp'); }
-    else if(it.lineTotal>0){ g('pLineTotal').value = it.lineTotal; purchaseRecalc('total'); }
-    if(it.batch) g('pBatch').value = it.batch;
-    if(it.expiry) g('pExpiry').value = it.expiry;
+    _invaiFillForm(it, med);
     if(_invaiSeq){
       const total = _invaiRows.filter(r=>r.it && r.it.qty>0).length, no = _invaiRows.filter(r=>r.done).length + 1;
-      const t = g('purchaseModalTitle'); if(t) t.textContent = 'ক্রয় এন্ট্রি — '+no+'/'+total+' ('+(it.name||'')+')';
+      const t = document.getElementById('purchaseModalTitle'); if(t) t.textContent = 'ক্রয় এন্ট্রি — '+no+'/'+total+' ('+(it.name||'')+')';
     }
   }catch(e){ console.error(e); toast('কিছু ঘর ভরা যায়নি — হাতে দিন'); }
+}
+// কৌটা/পাতা ধরনের ওষুধ (স্টক "কৌটা" গুনে রাখা হয়): পিস নয়, প্যাক সংখ্যাই পরিমাণ। বাকি সব ওষুধে পিস।
+function _invaiQtyFor(it, med){
+  let qty = it.qty, bonus = it.bonus||0, warn = '', pot = false;
+  if(med && med.type==='পাউডার/কৌটা' && it.packs>0 && it.perPack>0){
+    pot = true; qty = it.packs;
+    if(bonus>0){ if(bonus % it.perPack === 0) bonus = bonus / it.perPack; else { warn = 'বোনাসের পিস কৌটায় ভাগ হয় না — বোনাস হাতে দিন'; bonus = 0; } }
+    if(med.packCount>0 && med.packCount !== it.perPack) warn = (warn?warn+'; ':'')+'ইনভেন্টরিতে কৌটায় '+med.packCount+'টা, ইনভয়েসে '+it.perPack+'টা — মিলিয়ে নিন';
+  }
+  return { qty, bonus, warn, pot };
+}
+// ক্রয় ফর্মের ঘরগুলো একটা লাইনের তথ্য দিয়ে ভরা (ফর্ম খোলা থাকতে হবে/openPurchaseModal ডাকা থাকতে হবে)
+function _invaiFillForm(it, med){
+  const g = id=>document.getElementById(id), q = _invaiQtyFor(it, med);
+  pickPMedicine(med.id, typePrefixPlain(med.type)+med.name);
+  if(_invaiSupId){ const sp = suppliers.find(x=>x.id===_invaiSupId); if(sp) pickPSupplier(sp.id, sp.name); }
+  g('pQty').value = q.qty;
+  g('pBonus').value = String(q.bonus||0);
+  if(it.special>0) g('pLineSpecial').value = it.special;
+  purchaseRecalc('bonus');
+  if(it.lineTp>0){ g('pLineTP').value = it.lineTp; purchaseRecalc('tp'); }
+  else if(it.tp>0 && it.qty>0){ g('pLineTP').value = Math.round(it.tp*it.qty*100)/100; purchaseRecalc('tp'); }
+  else if(it.lineTotal>0){ g('pLineTotal').value = it.lineTotal; purchaseRecalc('total'); }
+  if(it.batch) g('pBatch').value = it.batch;
+  if(it.expiry) g('pExpiry').value = it.expiry;
+  return q;
 }
 function invaiAddNew(i){
   const row = _invaiRows[i]; if(!row) return;
@@ -334,7 +355,8 @@ function invaiAddNew(i){
 // লিস্টের ধরন (| দিয়ে আলাদা, ফাঁকা ঘর ফাঁকা রাখা যায়):
 //   supplier: Popular            ← মাথার লাইনগুলো (সব ঐচ্ছিক): supplier, invoice, date, totalTp, net, special
 //   Anzet | tab | 1 | 0 |  | 428.79 | BATCH | 2027-05-01 | 0
-//   নাম | ধরন | পরিমাণ | বোনাস | লাইন-TP | লাইন-মোট(ভ্যাট-ছাড় সহ) | ব্যাচ | মেয়াদ(YYYY-MM-DD) | এই ওষুধের বিশেষ ছাড়
+//   নাম | ধরন | পরিমাণ(পিস) | বোনাস(পিস) | লাইন-TP | লাইন-মোট(ভ্যাট-ছাড় সহ) | ব্যাচ | মেয়াদ(YYYY-MM-DD) | এই ওষুধের বিশেষ ছাড় | হিসাবের নোট(যেমন 5×50)
+// পরিমাণ সবসময় পিস (ট্যাবলেট/ক্যাপসুল/বোতল/ভায়াল) — প্যাক সংখ্যা × প্যাকের পিস। ইনভয়েসে নামের পাশে 10x10's / 150's লেখা থাকে সেটাই প্যাকের পিস।
 // লাইন-TP দিলে ইনভয়েস সমন্বয় (মোট TP ও দেয় টাকা) নিজে বসে; লাইন-মোট দিলে সমন্বয় লাগে না। নামের শেষে ? দিলে "অস্পষ্ট" চিহ্ন পড়ে।
 const _INVP_TYPES = { tab:'tab', tablet:'tab', 'ট্যাবলেট':'tab', cap:'cap', capsule:'cap', 'ক্যাপসুল':'cap', syrup:'syrup', 'সিরাপ':'syrup', susp:'susp', suspension:'susp', 'সাসপেনশন':'susp',
   inj:'inj', injection:'inj', 'ইনজেকশন':'inj', supp:'supp', suppository:'supp', 'সাপোজিটরি':'supp', oint:'oint', ointment:'oint', 'মলম':'oint', cream:'cream', 'ক্রিম':'cream', drop:'drop', drops:'drop', 'ড্রপ':'drop', powder:'powder', 'পাউডার-কৌটা':'powder' };
@@ -377,7 +399,8 @@ function invaiParsePaste(text){
     if(lineTp>0 && lineTotal>0){ lineTp = 0; out.notes.push(name+': লাইন-TP ও লাইন-মোট দুটোই ছিল — লাইন-মোট ধরা হয়েছে'); }
     const t = (c[1]||'').trim().toLowerCase().normalize('NFC');
     const expiry = /^\d{4}-\d{2}-\d{2}$/.test(c[7]||'') ? c[7] : '';
-    out.items.push({ name, type: _INVP_TYPES[t]||'', qty, bonus, tp:null, lineTp: lineTp>0?lineTp:null, lineTotal: lineTotal>0?lineTotal:null, batch:(c[6]||'').trim(), expiry, special, sure });
+    out.items.push({ name, type: _INVP_TYPES[t]||'', qty, bonus, tp:null, lineTp: lineTp>0?lineTp:null, lineTotal: lineTotal>0?lineTotal:null, batch:(c[6]||'').trim(), expiry, special, sure, note:(c[9]||'').trim(), packs:0, perPack:0 });
+    { const it = out.items[out.items.length-1], mm = /^\s*(\d+)\s*[×xX*]\s*(\d+)/.exec(_invpBn(it.note)); if(mm){ it.packs = parseInt(mm[1]); it.perPack = parseInt(mm[2]); } }
   });
   // যোগফল মেলানো: লাইন-TP থাকলে মোট TP-র সাথে, শুধু লাইন-মোট থাকলে দেয় টাকার সাথে
   const r2 = x=>Math.round(x*100)/100;
@@ -444,4 +467,75 @@ function _invaiPasteNotes(r){
   const w = (r.notes||[]).concat(r.skipped||[]);
   if(w.length) h += '<div class="row-sub" style="color:#b45309;border-radius:10px;padding:8px 10px;margin-bottom:8px;background:#fff7e6;line-height:1.7;white-space:pre-wrap;">⚠ লক্ষ্য করুন:\n'+w.map(_invaiEsc).join('\n')+'</div>';
   return h;
+}
+
+// ===== সবগুলো একসাথে সংরক্ষণ (v82) =====
+// ধাপ ১ (দেখা): প্রতিটা পাকা-মিল লাইনের ফর্ম মনে মনে ভরে ক্রয়মূল্য/লাভ হিসাব করে তালিকায় দেখায় — কিছু সেভ হয় না।
+// ধাপ ২ (সেভ): নিশ্চিত করলে একই ফর্মের হিসাব দিয়েই প্রতিটা সেভ হয় (স্টক, ক্রয়মূল্য, ক্লাউড — হাতে সেভ করার মতোই)।
+let _invaiBulk = [];
+function _invaiBulkRows(){ return _invaiRows.map((row,i)=>({row,i})).filter(x=>!x.row.done && x.row.medId && x.row.exact && x.row.it && x.row.it.qty>0); }
+function _invaiBulkCalc(it, med){
+  openPurchaseModal(null, null);
+  const q = _invaiFillForm(it, med);
+  const g = id=>document.getElementById(id);
+  const qtyPaid = parseInt(g('pQty').value)||0, bonus = parseInt(g('pBonus').value)||0, lineTotal = _lineTotalEff(), rate = _rateVal()||med.buy;
+  const qty = qtyPaid + bonus;
+  const price = qty>0 ? (((bonus>0||lineTotal>0) ? (lineTotal>0?lineTotal:qtyPaid*rate) : qtyPaid*rate) / qty) : 0;
+  const total = lineTotal>0 ? lineTotal : qtyPaid*rate;
+  const tpTyped = _typedVal('pLineTP'), finTyped = _typedVal('pLineTotal');
+  let flag = '';
+  if(!(qtyPaid>0)) flag = 'পরিমাণ ০';
+  else if(!(price>0)) flag = 'ক্রয়মূল্য ০';
+  else if(tpTyped>0 && _invFactor()===1) flag = 'শুধু TP আছে কিন্তু ইনভয়েস সমন্বয় নেই';
+  else if(_invFactor()!==1 && !(tpTyped>0) && !(finTyped>0)) flag = 'সমন্বয় চালু অথচ TP/মোট ফাঁকা';
+  else { const k = _priceCheckKind(price, med.sell); if(k) flag = (k==='loss' ? 'লোকসান' : 'লাভ খুব কম')+' (বিক্রয় ৳'+(med.sell||0)+')'; }
+  closeModal('purchaseModalBackdrop');
+  return { qty, qtyPaid, bonus, price, total, flag, warn:q.warn, pot:q.pot };
+}
+function invaiBulkPreview(){
+  const cand = _invaiBulkRows();
+  if(!cand.length){ toast('বসানোর মতো পাকা-মিল লাইন নেই'); return; }
+  _invaiBulk = [];
+  closeModal('invaiModalBackdrop');
+  try{
+    cand.forEach(({row,i})=>{
+      const med = medicines.find(m=>m.id===row.medId); if(!med) return;
+      let c; try{ c = _invaiBulkCalc(row.it, med); }catch(e){ console.error(e); c = { qty:0, qtyPaid:0, bonus:0, price:0, total:0, flag:'হিসাব করা যায়নি', warn:'' }; }
+      _invaiBulk.push(Object.assign({ i, name: displayMedName(med) }, c));
+    });
+  } finally { openModal('invaiModalBackdrop'); }
+  const ok = _invaiBulk.filter(x=>!x.flag), bad = _invaiBulk.filter(x=>x.flag);
+  const sum = Math.round(ok.reduce((a,x)=>a+x.total,0)*100)/100, r = _invaiResult||{}, net = (r.totals&&r.totals.netPayable)||0;
+  let h = '<div style="font-weight:700;margin-bottom:6px;">সব একসাথে দেখুন — তারপর এক চাপে সংরক্ষণ</div>'
+    +'<div class="row-sub" style="line-height:1.7;margin-bottom:8px;">সেভ হবে <b>'+ok.length+'টা</b> • মোট ৳'+_invaiBn(sum)+(net>0?' (ইনভয়েসে দেয় ৳'+_invaiBn(net)+(bad.length||_invaiRows.some(x=>!x.done&&!(x.exact&&x.medId))?' — বাদ-থাকা লাইন থাকায় কম হতে পারে':'')+')':'')+(bad.length?' • বাদ থাকবে '+bad.length+'টা':'')+'</div>';
+  _invaiBulk.forEach(x=>{
+    h += '<div class="card" style="margin:5px 0;padding:8px 10px;'+(x.flag?'border:1px solid #f0b4a8;background:#fff5f2;':'')+'">'
+      +'<div style="font-weight:700;">'+_invaiEsc(x.name)+'</div>'
+      +'<div class="row-sub">'+x.qtyPaid+(x.pot?' কৌটা':' পিস')+(x.bonus>0?' + বোনাস '+x.bonus:'')+' • মোট ৳'+_invaiBn(Math.round(x.total*100)/100)+' • একক ক্রয়মূল্য ৳'+_invaiBn(Math.round(x.price*10000)/10000)+'</div>'
+      +(x.flag?'<div class="row-sub" style="color:#b42318;">⚠ '+_invaiEsc(x.flag)+' — এটা বাদ থাকবে, পরে আলাদা করে "ক্রয়ে বসান" দিয়ে করবেন</div>':'')
+      +(x.warn?'<div class="row-sub" style="color:#b45309;">⚠ '+_invaiEsc(x.warn)+'</div>':'')+'</div>';
+  });
+  h += (ok.length?'<button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="invaiBulkSave()">✅ '+ok.length+'টা সবগুলো সংরক্ষণ করুন</button>':'')
+    +'<button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="invaiRenderReview()">← তালিকায় ফিরুন</button>';
+  _invaiBody(h);
+}
+function invaiBulkSave(){
+  const ok = _invaiBulk.filter(x=>!x.flag);
+  if(!ok.length) return;
+  if(!confirm(ok.length+'টা ক্রয় এক সাথে সংরক্ষণ হবে, স্টক বাড়বে। সংরক্ষণ করবেন?')) return;
+  closeModal('invaiModalBackdrop');
+  let done = 0, failed = [];
+  try{
+    ok.forEach(x=>{
+      const row = _invaiRows[x.i], med = row && medicines.find(m=>m.id===row.medId), before = purchases.length;
+      if(!row || !med || row.done){ return; }
+      try{
+        openPurchaseModal(null, null);
+        _invaiFillForm(row.it, med);
+        _savePurchaseCore(0);
+      }catch(e){ console.error(e); }
+      if(purchases.length > before){ row.done = true; done++; } else failed.push(x.name);
+    });
+  } finally { closeModal('purchaseModalBackdrop'); _invaiSeq = false; invaiRenderReview(); openModal('invaiModalBackdrop'); }
+  toast(done+'টা ক্রয় সংরক্ষিত ✓'+(failed.length?' • হয়নি: '+failed.join(', '):''));
 }
