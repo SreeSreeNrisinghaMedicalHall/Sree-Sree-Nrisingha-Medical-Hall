@@ -46,6 +46,7 @@ function onMedTypeChange(){
   const needsBottle = (type==='সিরাপ' || type==='সাসপেনশন' || type==='ড্রপ' || type==='এন্টিসেপটিক');
   const needsPackDays = (type==='মলম' || type==='ক্রিম' || type==='শ্যাম্পু' || type==='এন্টিসেপটিক' || type==='ইনহেলার');
   const needsPackCount = (type==='পাউডার/কৌটা');
+  try{ refreshMedDesc(); }catch(e){}
   document.getElementById('mBottleSizeWrap').style.display = needsBottle ? 'block' : 'none';
   document.getElementById('mPackDaysWrap').style.display = needsPackDays ? 'block' : 'none';
   document.getElementById('mPackCountWrap').style.display = needsPackCount ? 'block' : 'none';
@@ -670,6 +671,7 @@ function renderMedicines(){
       <div class="row-item" onclick="toggleMedSelected('${m.id}');this.querySelector('input').checked=selectedMedIds.has('${m.id}');document.getElementById('medDeleteSelectedBtn').textContent='নির্বাচিতগুলো মুছুন ('+selectedMedIds.size+')';" style="cursor:pointer;">
         <div style="display:flex;align-items:center;gap:10px;">
           <input type="checkbox" ${selectedMedIds.has(m.id)?'checked':''} style="width:18px;height:18px;pointer-events:none;">
+          <span style="flex:0 0 30px;width:30px;text-align:center;font-size:24px;line-height:1;">${(typeof _medTypeIcon==='function')?_medTypeIcon(m.type):''}</span>
           <div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)}</div><div class="row-sub">${m.company||'—'} ${m.batch?'• ব্যাচ:'+m.batch:''}</div></div>
         </div>
         <span class="badge ${m.stock<=m.lowLimit?'badge-red':'badge-green'}">স্টক: ${m.stock}</span>
@@ -677,7 +679,7 @@ function renderMedicines(){
   } else {
     el.innerHTML = list.length ? list.map(m=>_clsHead(m)+`
       <div class="row-item" onclick="openMedModal('${m.id}')" style="cursor:pointer;">
-        <div><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)} ${m.isAntibiotic?'<span class="badge badge-red" style="margin-left:4px;">এন্টিবায়োটিক</span>':''}</div><div class="row-sub">${m.company||'—'} ${m.batch?'• ব্যাচ:'+m.batch:''}${(_showGen && m.generic)?' • জেনেরিক: '+escapeHtml(m.generic):''}${_clsSub(m)}${_sameGen.has(m.id)?' • <b style="color:#1e7e4f;">একই জেনেরিক</b>':''}</div></div>
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;"><span style="flex:0 0 30px;width:30px;text-align:center;font-size:24px;line-height:1;">${(typeof _medTypeIcon==='function')?_medTypeIcon(m.type):''}</span><div style="min-width:0;"><div class="row-title">${medTypeTag(m.type)}${stripRedundantTypeSuffix(m.name, m.type)} ${m.isAntibiotic?'<span class="badge badge-red" style="margin-left:4px;">এন্টিবায়োটিক</span>':''}</div><div class="row-sub">${m.company||'—'} ${m.batch?'• ব্যাচ:'+m.batch:''}${(_showGen && m.generic)?' • জেনেরিক: '+escapeHtml(m.generic):''}${_clsSub(m)}${_sameGen.has(m.id)?' • <b style="color:#1e7e4f;">একই জেনেরিক</b>':''}</div></div></div>
         <div class="row-right"><div class="row-title">${fmt(m.sell)}</div>
         <span class="badge ${m.stock<=m.lowLimit?'badge-red':'badge-green'}">স্টক: ${m.stock}</span></div>
       </div>`).join('') : `<div class="empty-state">কোনো ওষুধ পাওয়া যায়নি — উপরে থেকে যোগ করুন</div>`;

@@ -144,14 +144,14 @@ function medAltHtml(med){
     + '</div>';
 }
 // "এটা কিসের জন্য" বক্স — জেনেরিক নাম ধরে (app-20-generic-info.js)। নাম তালিকায় না থাকলে কিছুই দেখায় না।
-function refreshMedDesc(){ const el = document.getElementById('mDescInfo'); const g = document.getElementById('mGeneric'); if(el) el.innerHTML = medDescHtml({generic: g ? g.value : ''}); }
+function refreshMedDesc(){ const el = document.getElementById('mDescInfo'); const g = document.getElementById('mGeneric'); const t = document.getElementById('mType'); if(el) el.innerHTML = medDescHtml({generic: g ? g.value : '', type: t ? t.value : ''}); }
 function medDescHtml(med){
   try{
     if(typeof genericInfoFor!=='function') return '';
     const info = genericInfoFor(med && med.generic);
     if(!info.length) return '';
     const body = info.map(x=>`<div style="margin:6px 0;">${info.length>1?`<div style="font-weight:700;font-size:13px;color:#0f6b5c;">${escapeHtml(x.name)}</div>`:''}<div style="font-size:14px;line-height:1.6;">${escapeHtml(x.use)}</div>${x.warn?`<div style="font-size:12.5px;line-height:1.5;color:#a15c00;margin-top:2px;">⚠ ${escapeHtml(x.warn)}</div>`:''}</div>`).join('');
-    return `<div style="margin:10px 0;padding:10px 12px;background:#f1f7f4;border:1px solid #cfe3d8;border-radius:12px;"><div style="font-weight:800;font-size:14px;color:#0f6b5c;">💊 এটা কিসের জন্য</div>${body}<div style="font-size:11.5px;color:#777;margin-top:4px;">সাধারণ তথ্য মাত্র — রোগীকে দেওয়ার আগে ডাক্তারের পরামর্শ ও প্যাকের নির্দেশ দেখুন।</div></div>`;
+    return `<div style="margin:10px 0;padding:10px 12px;background:#f1f7f4;border:1px solid #cfe3d8;border-radius:12px;"><div style="font-weight:800;font-size:14px;color:#0f6b5c;display:flex;align-items:center;gap:6px;"><span style="display:inline-flex;font-size:20px;line-height:1;">${_medTypeIcon(med&&med.type)}</span>এটা কিসের জন্য</div>${body}<div style="font-size:11.5px;color:#777;margin-top:4px;">সাধারণ তথ্য মাত্র — রোগীকে দেওয়ার আগে ডাক্তারের পরামর্শ ও প্যাকের নির্দেশ দেখুন।</div></div>`;
   }catch(e){ return ''; }
 }
 let editingPurchaseId = null;
