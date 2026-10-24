@@ -100,7 +100,11 @@ function medAlternatives(med){
 }
 // ধরন অনুযায়ী ছোট আইকন (মেডেক্সের মতো কার্ডে)
 function _medTypeIcon(t){
-  return ({'ট্যাবলেট':'💊','ক্যাপসুল':'💊','সিরাপ':'🧴','সাসপেনশন':'🧴','ইনজেকশন':'💉','ড্রপ':'💧','মলম':'🧴','ক্রিম':'🧴','সাপোজিটরি':'💊','ইনহেলার':'🌬️','পাউডার/কৌটা':'🥫','শ্যাম্পু':'🧴','এন্টিসেপটিক':'🧴'})[t] || '💊';
+  // v86: ট্যাবলেট / ক্যাপসুল / সাপোজিটরি আগে সবার জন্য একই 💊 ছিল — এখন তিনটের আলাদা আইকন
+  if(t==='ট্যাবলেট') return '<svg width="30" height="30" viewBox="0 0 32 32" aria-label="ট্যাবলেট"><circle cx="16" cy="16" r="12" fill="#fff" stroke="#8a97a3" stroke-width="2"/><line x1="7" y1="16" x2="25" y2="16" stroke="#8a97a3" stroke-width="2" stroke-linecap="round"/></svg>';
+  if(t==='ক্যাপসুল') return '<svg width="30" height="30" viewBox="0 0 32 32" aria-label="ক্যাপসুল"><g transform="rotate(-45 16 16)"><path d="M16 9h-5a7 7 0 0 0 0 14h5z" fill="#e5484d"/><path d="M16 9h5a7 7 0 0 1 0 14h-5z" fill="#f5c542"/><rect x="4" y="9" width="24" height="14" rx="7" fill="none" stroke="#6b7280" stroke-width="1.5"/></g></svg>';
+  if(t==='সাপোজিটরি') return '<svg width="30" height="30" viewBox="0 0 32 32" aria-label="সাপোজিটরি"><g transform="rotate(-35 16 16)"><path d="M5 16c0-5 6-7 12-7 4 0 10 3 10 7s-6 7-10 7c-6 0-12-2-12-7z" fill="#f3dcc0" stroke="#b08a5b" stroke-width="1.6"/></g></svg>';
+  return ({'সিরাপ':'🧴','সাসপেনশন':'🧴','ইনজেকশন':'💉','ড্রপ':'💧','মলম':'🧴','ক্রিম':'🧴','ইনহেলার':'🌬️','পাউডার/কৌটা':'🥫','শ্যাম্পু':'🧴','এন্টিসেপটিক':'🧴'})[t] || '💊';
 }
 let _altLimit = 10;
 function medAltMore(id){ _altLimit += 20; const m = medicines.find(x=>x.id===id); const li = document.getElementById('mLotsInfo'); if(m && li) li.innerHTML = medLotsHtml(m)+medAltHtml(m); }

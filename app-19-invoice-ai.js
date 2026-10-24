@@ -17,12 +17,16 @@ function _invaiLoose(s){
   // (ধরনটা আলাদা ঘরে আসে ও নিচে আলাদাভাবে মেলানো হয়, তাই এখানে বাদ দিলে ট্যাবলেট/ইনজেকশন গুলিয়ে যায় না)
   return normalizeMedName(s||'').replace(/(\d)\s*(mg|mcg|gm|ml|iu|g)\b/g,'$1').replace(/\b(mg|mcg|gm|ml|iu)\b/g,'')
     .replace(/(\s|^)(iv\/im|im\/iv|iv|im|inj|injection|tab|tablet|cap|capsule|syp|syrup|susp|suspension)(?=\s|$)/g,' ')
-    .replace(/[^a-z0-9\u0980-\u09FF\/.%]/g,'');
+    .replace(/(?<!\d)\.|\.(?!\d)/g,'').replace(/[^a-z0-9\u0980-\u09FF\/.%]/g,'');
 }
 // ইনভয়েসের ধরন ইনভেন্টরির ধরনের সাথে মেলে কি না। "পাউডার/কৌটা" ধরনে সেভ করা ওষুধ (Neuro-B, Filwel Gold) ইনভয়েসে tab/cap/powder/drop যা-ই লেখা থাকতে পারে।
 function _invaiTypeOk(want, medType){
   if(!want) return true;
   if(medType===want) return true;
+  // v86: ইনভয়েসে "Soln/Drop/Syrup" যা-ই লেখা থাকুক, ইনভেন্টরিতে তরল জাতীয় যেকোনো ধরন (সিরাপ/সাসপেনশন/ড্রপ/এন্টিসেপটিক) একই পরিবার — Viodin-এর মতো সলিউশন "অনুমান" হতো
+  const LIQ=['সিরাপ','সাসপেনশন','ড্রপ','এন্টিসেপটিক'], SEMI=['মলম','ক্রিম'];
+  if(LIQ.includes(want) && LIQ.includes(medType)) return true;
+  if(SEMI.includes(want) && SEMI.includes(medType)) return true;
   return medType==='পাউডার/কৌটা';   // কৌটা-ধরনের ওষুধ ইনভয়েসে যে নামেই আসুক মেলে (আগের আচরণ অপরিবর্তিত)
 }
 function _invaiEdit1(a,b){   // দুই শব্দে একটা অক্ষর বেশি/কম/আলাদা হলে true (Ebatin ~ Ebatain)
@@ -36,7 +40,7 @@ function _invaiBrandNum(name){
   const w = n.split(' ');
   return { brand: w[0]||'', nums: (n.match(/\d+(\.\d+)?/g)||[]).join(',') };
 }
-function invaiMatch(item, meds){
+function _invaiMatchRaw(item, meds){
   try{
     const q = normalizeMedName(item.name||'');
     if(!q) return { med:null, exact:false };
@@ -76,6 +80,46 @@ function invaiMatch(item, meds){
   return { med:null, exact:false };
 }
 
+// ===== v86: মেলানোর দ্বিতীয় ধাপ — অকারণ "অনুমান" কমানো, আর ভুল-শক্তির ওষুধ আলাদা করে ধরা =====
+// (১) ইনভয়েসের নামে শক্তির সংখ্যা নেই (Alatrol, Napa Extra, Tofen) আর ইনভেন্টরিতে একই ব্র্যান্ড+ধরনের ঠিক একটাই ওষুধ → পাকা মিল।
+// (২) l/i/1 গুলিয়ে পড়া (Zif Cl ~ Zif-CI) — বাকি সব এক ও ওষুধ একটাই হলে পাকা মিল।
+// (৩) ইনভয়েসে শক্তির সংখ্যা আছে অথচ পাওয়া ওষুধের সংখ্যা আলাদা (Angilock 50 → Angilock 25 mg, Migranil 0.5 → 1.5 mg)
+//     → mismatch=true: এটা "অনুমান" নয়, সম্ভবত অন্য ওষুধ। পাকা-মিল হয় না, লাল সতর্কতা দেখায়, সব-একসাথে-সংরক্ষণে ঢোকে না।
+function _invaiNums(name){ return (normalizeMedName(name||'').replace(/[^a-z0-9. %\/]/g,' ').match(/\d+(\.\d+)?/g)||[]).map(x=>String(parseFloat(x))).join(','); }
+function _invaiBrandOnly(name){ return _invaiLoose(String(name||'').replace(/\d+(\.\d+)?\s*(%|mg|mcg|gm|ml|iu|g)?/gi,' ')); }
+function _invaiFold(s){ return String(s||'').replace(/[1il]/g,'l'); }
+function invaiMatch(item, meds){
+  const r = _invaiMatchRaw(item, meds);
+  try{
+    if(r.exact) return r;
+    const list = meds || medicines;
+    const wantType = INVAI_TYPE_MAP[item.type||''] || '';
+    const qn = _invaiNums(item.name), qb = _invaiBrandOnly(item.name);
+    const okType = m=>!wantType || _invaiTypeOk(wantType, m.type);
+    if(qb){
+      if(!qn){
+        const c = list.filter(m=>okType(m) && (_invaiBrandOnly(m.name)===qb || _invaiFold(_invaiBrandOnly(m.name))===_invaiFold(qb)));
+        if(c.length===1) return { med:c[0], exact:true };
+      } else {
+        const lq = _invaiFold(_invaiLoose(item.name));
+        const c = list.filter(m=>okType(m) && _invaiFold(_invaiLoose(m.name))===lq && _invaiLoose(m.name)!==_invaiLoose(item.name));
+        if(c.length===1) return { med:c[0], exact:true };
+      }
+    }
+    // v87: ইনভয়েসের শক্তি/সংখ্যা আর পাওয়া ওষুধের সংখ্যা সম্পূর্ণ আলাদা (Glysup 1 ≠ Glysup 1.15, Angilock 50 ≠ 25, Migranil 0.5 ≠ 1.5)
+    // → এটা অন্য ওষুধ। কোনো ভুল ওষুধ সাজেস্ট না করে "মিল পাওয়া যায়নি" দেখায় (➕ নতুন ওষুধ আসে); আপনার ইনভেন্টরিতে সেই শক্তির ওষুধ থাকলে হুবহু সেটাই বসে।
+    // (এক পক্ষের সংখ্যা অন্য পক্ষের ভেতরে থাকলে — Viodin 10% ~ Viodin 10% 100 ml — আলাদা ধরা হয় না)
+    if(r.med && qn){
+      const A = new Set(qn.split(',')), B = new Set(_invaiNums(r.med.name).split(',').filter(Boolean));
+      if(B.size){
+        const sub = (X,Y)=>[...X].every(v=>Y.has(v));
+        if(!sub(A,B) && !sub(B,A)) return { med:null, exact:false };
+      }
+    }
+  }catch(e){ console.error(e); }
+  return r;
+}
+
 // ছবি ছোট করা: সার্ভারে ও এআই-তে খরচ/সময় কমে; লেখা পড়ার জন্য ১৮০০px যথেষ্ট
 async function invaiPrepareImage(file){
   const url = URL.createObjectURL(file);
@@ -104,7 +148,7 @@ function invaiOpen(){
   _invaiEnsureModal();
   if(_invaiResult && _invaiRows.length){
     // আগের তালিকায় ফিরে আসা; মিল না পাওয়া লাইনে ইতিমধ্যে নতুন ওষুধ যোগ করে থাকলে আবার মিলিয়ে নেওয়া
-    _invaiRows.forEach(r=>{ if(!r.medId && !r.done){ const m = invaiMatch(r.it); if(m.med){ r.medId = m.med.id; r.exact = m.exact; } } });
+    _invaiRows.forEach(r=>{ if(!r.medId && !r.done){ const m = invaiMatch(r.it); if(m.med){ r.medId = m.med.id; r.exact = m.exact; r.mismatch = !!m.mismatch; } } });
     invaiRenderReview(); openModal('invaiModalBackdrop'); return;
   }
   invaiRenderStart();
@@ -246,7 +290,7 @@ async function invaiSend(){
     const r = await _srvCall('invoiceScan', { shop: localStorage.getItem('ssn_shop_code'), image: b64, mediaType: 'image/jpeg' });
     if(!r || !Array.isArray(r.items) || !r.items.length){ _invaiBusy = false; invaiRenderStart((r && r.error) || 'ছবি থেকে কোনো ওষুধ পাওয়া যায়নি — আরেকটা স্পষ্ট ছবি দিয়ে চেষ্টা করুন।'); return; }
     _invaiResult = r;
-    _invaiRows = r.items.map(it=>{ const m = invaiMatch(it); return { it, medId: m.med ? m.med.id : '', exact: m.exact, done: false }; });
+    _invaiRows = r.items.map(it=>{ const m = invaiMatch(it); return { it, medId: m.med ? m.med.id : '', exact: m.exact, mismatch: !!m.mismatch, done: false }; });
     _invaiBusy = false; invaiRenderReview();
   }catch(e){
     console.error(e); _invaiBusy = false;
@@ -275,7 +319,7 @@ function invaiRenderReview(){
       +(!(it.qty>0)&&it.bonus>0 ? '<div class="row-sub" style="color:#b45309;">🎁 শুধু বোনাস (বিনামূল্যে '+it.bonus+'টা, পরিমাণ ০) — ক্রয় ফর্মে বসে না; ওষুধের স্টকে হাতে +'+it.bonus+' করুন</div>' : '')
       +((med && _invaiQtyFor(it,med).pot) ? '<div class="row-sub" style="color:#0a5c36;">🫙 কৌটা ধরনের ওষুধ — ফর্মে <b>'+_invaiQtyFor(it,med).qty+' কৌটা</b>'+(_invaiQtyFor(it,med).bonus>0?' + বোনাস '+_invaiQtyFor(it,med).bonus:'')+' বসবে (পিস নয়)'+(_invaiQtyFor(it,med).warn?' <span style="color:#b45309;">⚠ '+_invaiEsc(_invaiQtyFor(it,med).warn)+'</span>':'')+'</div>' : '')
       +'<div class="row-sub" style="margin-top:4px;">'
-      +(med ? ('ইনভেন্টরিতে: <b>'+_invaiEsc(displayMedName(med))+'</b>'+(row.exact?' ✓':' <span style="color:#b45309;">(অনুমান — মিলিয়ে নিন)</span>')) : '<span style="color:#b42318;">ইনভেন্টরিতে মিল পাওয়া যায়নি</span>')
+      +(med ? ('ইনভেন্টরিতে: <b>'+_invaiEsc(displayMedName(med))+'</b>'+(row.exact?' ✓':(row.mismatch?' <span style="color:#b42318;font-weight:700;">⚠ শক্তি আলাদা — সম্ভবত অন্য ওষুধ, ইনভেন্টরিতে এই শক্তি নেই</span>':' <span style="color:#b45309;">(অনুমান — মিলিয়ে নিন)</span>'))) : '<span style="color:#b42318;">ইনভেন্টরিতে মিল পাওয়া যায়নি</span>')
       +'</div>';
     if(row.done){ h += '<div class="row-sub" style="color:#0a5c36;font-weight:700;margin-top:4px;">✓ ক্রয়ে বসানো হয়েছে</div>'; }
     else {
@@ -394,12 +438,12 @@ const _INVP_TYPES = { tab:'tab', tablet:'tab', 'ট্যাবলেট':'tab',
   inj:'inj', injection:'inj', 'ইনজেকশন':'inj', supp:'supp', suppository:'supp', 'সাপোজিটরি':'supp', oint:'oint', ointment:'oint', 'মলম':'oint', cream:'cream', 'ক্রিম':'cream', drop:'drop', drops:'drop', 'ড্রপ':'drop', powder:'powder', 'পাউডার-কৌটা':'powder' };
 const _INVP_HEAD = {};
 [['supplier',['supplier','সাপ্লায়ার','কোম্পানি']],['invoiceNo',['invoice','invoiceno','ইনভয়েস','ইনভয়েসনং']],['date',['date','তারিখ']],
- ['totalTp',['totaltp','মোটtp','মোটটিপি']],['netPayable',['net','netpayable','নেট','নেটটাকা','দেয়','দেয়টাকা','চূড়ান্তদেয়']],['specialDiscount',['special','বিশেষছাড়']]]
+ ['totalTp',['totaltp','মোটtp','মোটটিপি']],['netPayable',['net','netpayable','নেট','নেটটাকা','দেয়','দেয়টাকা','চূড়ান্তদেয়']],['specialDiscount',['special','বিশেষছাড়']],['digitalDiscount',['digital','ডিজিটাল','ডিজিটালছাড়']],['lessDiscount',['discount','lessdiscount','ছাড়','মোটছাড়']]]
  .forEach(([k,names])=>names.forEach(n=>{ _INVP_HEAD[n.normalize('NFC')] = k; }));
 function _invpBn(s){ return String(s==null?'':s).replace(/[০-৯]/g, d=>'০১২৩৪৫৬৭৮৯'.indexOf(d)).replace(/[,৳]/g,''); }
 function _invpNum(s){ const t = _invpBn(s).trim(); if(t==='') return null; if(!/^-?\d+(\.\d+)?$/.test(t)) return NaN; return parseFloat(t); }
 function invaiParsePaste(text){
-  const out = { supplier:'', invoiceNo:'', date:'', items:[], totals:{ totalTp:0, netPayable:0, specialDiscount:0 }, skipped:[], notes:[], check:null, paste:true };
+  const out = { supplier:'', invoiceNo:'', date:'', items:[], totals:{ totalTp:0, netPayable:0, specialDiscount:0, digitalDiscount:0, lessDiscount:0 }, skipped:[], notes:[], check:null, paste:true };
   const lines = String(text||'').replace(/\r/g,'').split('\n');
   lines.forEach((raw, idx)=>{
     const line = raw.trim(), no = idx+1;
@@ -444,6 +488,26 @@ function invaiParsePaste(text){
     if(!(out.totals.specialDiscount>0) && spSum>0) out.totals.specialDiscount = spSum;
     else if(out.totals.specialDiscount>0 && spSum>0 && Math.abs(spSum-out.totals.specialDiscount)>0.05) out.notes.push('বিশেষ ছাড়: মাথায় ৳'+out.totals.specialDiscount+', লাইনগুলোতে মোট ৳'+spSum+' — মিলছে না');
   }
+  // v87: স্কয়ারের হিসাব — (১) "Less Digital Discount" পেমেন্ট-পদ্ধতির ছাড়, ওষুধের দামে ধরা হয় না: দেয় টাকায় এটা ফেরত যোগ করে ওষুধের খরচ বের হয়।
+  // (২) "Less Discount Amount"-এর ভেতরে বিশেষ ছাড় (শুধু Nexum-এর) + বাকি ওষুধে TP-র ২%। Nexum-এ ২% পড়ে না — তার বদলে শুধু বিশেষ ছাড়।
+  //     তাই বিশেষ-ছাড়ের লাইনে (বিশেষ ছাড় − ২%×লাইন-TP) বাদ গেলে একটাই গুণকে সবাই ঠিক হিসাবে আসে।
+  try{
+    const T = out.totals;
+    T.payBase = T.netPayable>0 ? r2(T.netPayable + (T.digitalDiscount>0?T.digitalDiscount:0)) : 0;
+    T.specialEff = T.specialDiscount;
+    const spLines = out.items.filter(x=>x.special>0 && x.lineTp>0);
+    if(T.lessDiscount>0 && T.specialDiscount>0 && T.totalTp>0 && spLines.length){
+      const spTp = spLines.reduce((a,x)=>a+x.lineTp,0), othersTp = T.totalTp - spTp, othersDisc = T.lessDiscount - T.specialDiscount;
+      if(othersTp>0 && othersDisc>=0){
+        const rate = othersDisc/othersTp;
+        let eff = 0;
+        spLines.forEach(x=>{ x.specialOrig = x.special; x.special = r2(Math.max(0, x.special - rate*x.lineTp)); eff += x.special; });
+        T.specialEff = r2(eff); T.otherRate = rate;
+        out.notes.push('ছাড়ের ভাগ: বাকি ওষুধে TP-র '+(rate*100).toFixed(2)+'% ছাড়; বিশেষ-ছাড়ের ওষুধে শুধু বিশেষ ছাড় (লাইনে বসা সংখ্যা = বিশেষ ছাড় − ওই ২%)');
+      }
+    }
+    if(T.digitalDiscount>0) out.notes.push('ডিজিটাল ছাড় ৳'+T.digitalDiscount+' ওষুধের দামে ধরা হয়নি (পেমেন্টের ছাড়, আলাদা)');
+  }catch(e){ console.error(e); }
   return out;
 }
 function _invaiPasteBlock(){
@@ -470,7 +534,7 @@ function invaiPasteGo(){
   const usesTp = r.items.some(x=>x.lineTp>0), t = r.totals;
   if(usesTp){
     if(t.totalTp>0 && t.netPayable>0){
-      try{ _invLinesVal = String(t.totalTp); _invPayVal = String(t.netPayable); if(t.specialDiscount>0) _invSpecialVal = String(t.specialDiscount); }catch(e){ console.error(e); }
+      try{ _invLinesVal = String(t.totalTp); _invPayVal = String(t.payBase>0?t.payBase:t.netPayable); { const sp = (t.specialEff!=null?t.specialEff:t.specialDiscount); if(sp>0) _invSpecialVal = String(sp); } }catch(e){ console.error(e); }
     } else r.notes.push('লাইন-TP দেওয়া আছে কিন্তু মাথায় totalTp ও net নেই — ইনভয়েস সমন্বয় বসেনি, ক্রয় ফর্মে হাতে দিতে হবে');
   }
   _invaiSupId = '';
@@ -481,7 +545,7 @@ function invaiPasteGo(){
     }
   }catch(e){ console.error(e); }
   _invaiResult = r; _invaiSeq = false; _invaiOpenPick = -1;
-  _invaiRows = r.items.map(it=>{ const m = invaiMatch(it); return { it, medId: m.med ? m.med.id : '', exact: m.exact, done:false }; });
+  _invaiRows = r.items.map(it=>{ const m = invaiMatch(it); return { it, medId: m.med ? m.med.id : '', exact: m.exact, mismatch: !!m.mismatch, done:false }; });
   invaiRenderReview();
 }
 function _invaiPasteNotes(r){
@@ -493,8 +557,24 @@ function _invaiPasteNotes(r){
   }
   const t = r.totals||{};
   if(r.items.some(x=>x.lineTp>0) && t.totalTp>0 && t.netPayable>0){
-    h += '<div class="row-sub" style="background:#f3f7f4;border-radius:10px;padding:8px 10px;margin-bottom:8px;line-height:1.7;">⚙ ইনভয়েস সমন্বয় নিজে বসেছে: মোট TP ৳'+_invaiBn(t.totalTp)+' • দেয় ৳'+_invaiBn(t.netPayable)+(t.specialDiscount>0?' • বিশেষ ছাড় ৳'+_invaiBn(t.specialDiscount):'')+'</div>';
+    h += '<div class="row-sub" style="background:#f3f7f4;border-radius:10px;padding:8px 10px;margin-bottom:8px;line-height:1.7;">⚙ ইনভয়েস সমন্বয় নিজে বসেছে: মোট TP ৳'+_invaiBn(t.totalTp)+' • দেয় ৳'+_invaiBn(t.netPayable)+(t.digitalDiscount>0?' (ডিজিটাল ছাড় ৳'+_invaiBn(t.digitalDiscount)+' বাদে খরচ ৳'+_invaiBn(t.payBase)+')':'')+(t.specialDiscount>0?' • বিশেষ ছাড় ৳'+_invaiBn(t.specialDiscount):'')+'</div>';
   }
+  // v86: গড় ছাড় যাচাই — ইনভয়েসের মোট TP ও দেয় টাকা থেকে যে গুণক দাঁড়ায়, তাতে প্রতিটা ওষুধ বিক্রয়মূল্যের কত % কমে আসছে। অস্বাভাবিক হলে আগেই সতর্ক করে।
+  try{
+    if(t.totalTp>0 && t.netPayable>0){
+      const F = ((t.payBase>0?t.payBase:t.netPayable) + ((t.specialEff!=null?t.specialEff:t.specialDiscount)>0 ? (t.specialEff!=null?t.specialEff:t.specialDiscount) : 0)) / t.totalTp;
+      let buy = 0, sell = 0;
+      _invaiRows.forEach(row=>{ const m = medicines.find(x=>x.id===row.medId), it = row.it; if(m && row.exact && m.sell>0 && it.qty>0 && it.lineTp>0){ buy += it.lineTp*F - (it.special||0); sell += m.sell*it.qty; } });
+      if(sell>0 && buy>0){
+        const pct = (1 - buy/sell)*100, isSq = /square/i.test(r.supplier||'');
+        const odd = isSq ? (pct>16 || pct<10) : (pct>22 || pct<5);
+        h += '<div class="row-sub" style="border-radius:10px;padding:8px 10px;margin-bottom:8px;line-height:1.7;background:'+(odd?'#fff7e6':'#f3f7f4')+';">'
+          +(odd?'⚠ ':'')+'এই ইনভয়েসে গড় ছাড় ≈ <b>'+pct.toFixed(1)+'%</b> (বিক্রয়মূল্য থেকে, ইনভেন্টরির দামে)'
+          +(odd ? (isSq ? ' — স্কয়ারে সাধারণত প্রায় ১৩.৫%। দেয় টাকা বা মোট TP ইনভয়েসের সাথে আরেকবার মিলিয়ে নিন; নইলে সব ওষুধের ক্রয়মূল্য একই হারে ভুল হবে।' : ' — অস্বাভাবিক, দেয় টাকা/মোট TP আরেকবার দেখুন।') : '')
+          +'</div>';
+      }
+    }
+  }catch(e){ console.error(e); }
   if(_invaiSupId && typeof suppliers!=='undefined'){ const sp = suppliers.find(x=>x.id===_invaiSupId); if(sp) h += '<div class="row-sub" style="margin-bottom:8px;">সাপ্লায়ার: <b>'+_invaiEsc(sp.name)+'</b> (ফর্মে নিজে বসবে)</div>'; }
   const w = (r.notes||[]).concat(r.skipped||[]);
   if(w.length) h += '<div class="row-sub" style="color:#b45309;border-radius:10px;padding:8px 10px;margin-bottom:8px;background:#fff7e6;line-height:1.7;white-space:pre-wrap;">⚠ লক্ষ্য করুন:\n'+w.map(_invaiEsc).join('\n')+'</div>';
@@ -537,7 +617,7 @@ function invaiBulkPreview(){
     });
   } finally { openModal('invaiModalBackdrop'); }
   const ok = _invaiBulk.filter(x=>!x.flag), bad = _invaiBulk.filter(x=>x.flag);
-  const sum = Math.round(ok.reduce((a,x)=>a+x.total,0)*100)/100, r = _invaiResult||{}, net = (r.totals&&r.totals.netPayable)||0;
+  const sum = Math.round(ok.reduce((a,x)=>a+x.total,0)*100)/100, r = _invaiResult||{}, net = (r.totals&&(r.totals.payBase||r.totals.netPayable))||0;
   let h = '<div style="font-weight:700;margin-bottom:6px;">সব একসাথে দেখুন — তারপর এক চাপে সংরক্ষণ</div>'
     +'<div class="row-sub" style="line-height:1.7;margin-bottom:8px;">সেভ হবে <b>'+ok.length+'টা</b> • মোট ৳'+_invaiBn(sum)+(net>0?' (ইনভয়েসে দেয় ৳'+_invaiBn(net)+(bad.length||_invaiRows.some(x=>!x.done&&!(x.exact&&x.medId))?' — বাদ-থাকা লাইন থাকায় কম হতে পারে':'')+')':'')+(bad.length?' • বাদ থাকবে '+bad.length+'টা':'')+'</div>';
   _invaiBulk.forEach(x=>{
